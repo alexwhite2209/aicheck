@@ -1,0 +1,111 @@
+name: norma
+
+x-backend-env: &backend-env
+  ENV: production
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-norma}:${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}@postgres:5432/${POSTGRES_DB:-norma}
+  REDIS_URL: redis://redis:6379/0
+  TASK_MODE: celery
+  TRUST_PROXY_HEADERS: "true"
+  JWT_SECRET: ${JWT_SECRET:?Задайте JWT_SECRET в .env}
+  IP_HASH_SECRET: ${IP_HASH_SECRET:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
+  YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
+  YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://localhost}
+  CORS_ORIGINS: ""
+  ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-norma}
+      POSTGRES_USER: ${POSTGRES_USER:-norma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-norma} -d ${POSTGRES_DB:-norma}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    expose: ["8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend-env
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "-B", "--loglevel=info", "--concurrency=2"]
+    depends_on:
+      backend: { condition: service_healthy }
+    shm_size: "1gb"
+    security_opt:
+      - no-new-privileges:true
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_BASE_URL:-https://localhost}
+        NEXT_PUBLIC_OPERATOR_NAME: ${OPERATOR_NAME:-}
+        NEXT_PUBLIC_OPERATOR_INN: ${OPERATOR_INN:-}
+        NEXT_PUBLIC_OPERATOR_OGRN: ${OPERATOR_OGRN:-}
+        NEXT_PUBLIC_OPERATOR_ADDRESS: ${OPERATOR_ADDRESS:-}
+        NEXT_PUBLIC_OPERATOR_EMAIL: ${OPERATOR_EMAIL:-}
+    restart: unless-stopped
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8000
+      # frontend доступен только через Caddy, который выставляет реальный IP посетителя
+      TRUST_PROXY_HEADERS: "true"
+    depends_on:
+      backend: { condition: service_healthy }
+    expose: ["3000"]
+
+  # HTTPS (Let's Encrypt) на 80/443. DOMAIN=ваш домен (A-запись должна указывать на этот сервер). localhost — для проверки на своём компьютере.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - frontend
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pgdata:
+  caddy_data:
