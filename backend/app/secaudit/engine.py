@@ -68,5 +68,4 @@ def run_security(db: Session, facts: dict, sec: dict, on: date | None = None) ->
         "findings": out, "score": security_score(findings), "counts": counts,
         "by_severity": {s: sum(1 for f in findings if f.status == FAIL and f.severity == s) for s in WEIGHTS},
         "disclaimer": SECURITY_DISCLAIMER,
-        "active_available": False,  # S2 только для подтверждённых доменов; в MVP выключено
     }

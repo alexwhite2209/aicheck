@@ -67,7 +67,7 @@ def sites(db: Session = Depends(get_db), user: User = Depends(current_user)):
     for s in rows:
         audits = db.scalars(select(Audit).where(Audit.site_id == s.id, Audit.status == "done").order_by(Audit.created_at.desc()).limit(10)).all()
         out.append({"id": s.id, "url": s.url, "host": s.host, "monitoring": s.monitoring, "created_at": s.created_at.isoformat(),
-                    "verified": s.verified, "verify_method": s.verify_method, "audits": [audit_row(a) for a in audits]})
+                    "audits": [audit_row(a) for a in audits]})
     return {"sites": out}
 
 
@@ -104,36 +104,6 @@ def delete_site(site_id: str, db: Session = Depends(get_db), user: User = Depend
     db.delete(s)
     db.commit()
     return {"ok": True}
-
-
-@router.get("/sites/{site_id}/verify")
-def verify_info(site_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    from ..secaudit.verify import instructions, new_token
-    s = db.get(Site, site_id)
-    if not s or s.user_id != user.id:
-        raise HTTPException(404, "Сайт не найден")
-    if not s.verify_token:
-        s.verify_token = new_token()
-        db.commit()
-    return {"verified": s.verified, "method": s.verify_method, **instructions(s.host, s.verify_token)}
-
-
-@router.post("/sites/{site_id}/verify")
-def verify_do(site_id: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    from ..secaudit.verify import new_token, verify
-    s = db.get(Site, site_id)
-    if not s or s.user_id != user.id:
-        raise HTTPException(404, "Сайт не найден")
-    if not s.verify_token:
-        s.verify_token = new_token()
-        db.commit()
-    method = verify(s.host, s.verify_token)
-    if not method:
-        raise HTTPException(422, "Подтверждение не найдено. Проверьте, что файл/запись размещены, и попробуйте снова.")
-    from datetime import datetime, timezone
-    s.verified, s.verify_method, s.verified_at = True, method, datetime.now(timezone.utc)
-    db.commit()
-    return {"verified": True, "method": method}
 
 
 @router.get("/payments")

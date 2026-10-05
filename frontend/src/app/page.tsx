@@ -96,7 +96,7 @@ export default function Home() {
           <Spotlight size={700} />
           <div className="relative mx-auto max-w-2xl">
             <RiseWords as="h2" text="Узнайте, что исправить на сайте, за пару минут" className="text-[28px] font-semibold tracking-[-0.03em] sm:text-[36px]" />
-            <p className="mt-3 text-[15px] text-muted">Базовая проверка бесплатна и не требует регистрации.</p>
+            <p className="mt-3 text-[15px] text-muted">Экспресс-проверка бесплатна и не требует регистрации.</p>
             <div className="mt-8">
               <UrlForm size="md" />
             </div>

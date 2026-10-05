@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { Button, Checkbox, Input, Label } from "./ui";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
-  const [email, setEmail] = React.useState("");
+  const [login, setLogin] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [consent, setConsent] = React.useState(false);
   const [marketing, setMarketing] = React.useState(false);
@@ -26,7 +26,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     }
     setBusy(true);
     try {
-      await api(`/api/auth/${mode}`, { method: "POST", body: mode === "register" ? { email, password, consent, marketing } : { email, password } });
+      await api(`/api/auth/${mode}`, { method: "POST", body: mode === "register" ? { login, password, consent, marketing } : { login, password } });
       if (claim) {
         try {
           await api(`/api/user/audits/${claim}/claim`, { method: "POST" });
@@ -48,8 +48,8 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {claim && <p className="mt-2 text-[13px] text-muted">После {mode === "login" ? "входа" : "регистрации"} проверка будет сохранена в кабинете.</p>}
         <form onSubmit={submit} className="mt-6 space-y-4">
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-[13px] text-muted">Email</label>
-            <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <label htmlFor="login" className="mb-1.5 block text-[13px] text-muted">Логин{mode === "register" ? " (3–32 символа: латиница, цифры, _ . -)" : ""}</label>
+            <Input id="login" type="text" autoComplete="username" required minLength={mode === "register" ? 3 : 1} maxLength={32} autoCapitalize="none" spellCheck={false} value={login} onChange={(e) => setLogin(e.target.value)} />
           </div>
           <div>
             <label htmlFor="password" className="mb-1.5 block text-[13px] text-muted">Пароль{mode === "register" ? " (не менее 8 символов)" : ""}</label>
@@ -58,7 +58,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           {mode === "register" && (
             <div className="space-y-3 pt-1">
               <Checkbox id="consent" checked={consent} onChange={setConsent}>
-                Даю <Link href="/consent" target="_blank" className="text-text underline underline-offset-2">согласие на обработку персональных данных</Link> (email и технические данные) для работы личного кабинета. Обязательно.
+                Даю <Link href="/consent" target="_blank" className="text-text underline underline-offset-2">согласие на обработку персональных данных</Link> (логин и технические данные) для работы личного кабинета. Обязательно.
               </Checkbox>
               <Checkbox id="marketing" checked={marketing} onChange={setMarketing}>
                 Согласен получать сообщения о новых возможностях сервиса и изменениях законодательства. Необязательно, можно отозвать.

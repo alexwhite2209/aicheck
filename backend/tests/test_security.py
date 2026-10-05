@@ -68,12 +68,6 @@ def test_jwt_alg_none_flagged():
     assert out and "none" in out[0].evidence[0]["snippet"]
 
 
-def test_sql_error_leak():
-    page = {"url": "https://example.ru/", "text": "You have an error in your SQL syntax; check the manual that corresponds to your MySQL", "inline_scripts": "", "scripts": [], "links": [], "iframes": []}
-    out = [f for f in scan.scan(_facts(), _sec(pages=[page])) if f.id == "SEC_SQL_ERRORS_006"]
-    assert out and out[0].status == "REVIEW"
-
-
 def test_pd_touching_finding_marked():
     collected = {"exposure": [{"id": "env", "path": "/.env", "title": "Доступен .env", "severity": "critical", "status": 200}]}
     out = scan.scan(_facts(forms=[{"has_pd": True}]), _sec(collected=collected))

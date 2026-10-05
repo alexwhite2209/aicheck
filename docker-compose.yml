@@ -14,7 +14,7 @@ x-backend-env: &backend-env
   YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://localhost}
   CORS_ORIGINS: ""
-  ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+  ADMIN_LOGIN: ${ADMIN_LOGIN:-}
   ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
 
 services:

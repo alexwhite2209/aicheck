@@ -19,7 +19,7 @@ def new_id() -> str:
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    login: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="user")  # user | admin
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -42,11 +42,6 @@ class Site(Base):
     monitoring: Mapped[str] = mapped_column(String(16), default="off")  # off | daily | weekly | monthly
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_audit_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    # подтверждение владения доменом (для активных проверок безопасности S2)
-    verify_token: Mapped[str] = mapped_column(String(64), default="")
-    verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    verify_method: Mapped[str] = mapped_column(String(16), default="")  # file | dns | meta
 
 
 class Audit(Base):
@@ -65,14 +60,14 @@ class Audit(Base):
     facts: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     results: Mapped[list | None] = mapped_column(JSON, nullable=True)
     ai: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    security: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # модуль безопасности (платно)
-    registries: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # проверка по реестрам (платно)
+    security: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # Security Skills (входят в «Полный аудит»)
+    registries: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # проверка по реестрам (входит в «Полный аудит»)
     deep: Mapped[bool] = mapped_column(Boolean, default=False)  # собирались ли данные безопасности
     snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # версии правил и редакции норм
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    paid_full: Mapped[bool] = mapped_column(Boolean, default=False)  # юридический полный отчёт
-    paid_security: Mapped[bool] = mapped_column(Boolean, default=False)  # безопасность + реестры
+    paid_full: Mapped[bool] = mapped_column(Boolean, default=False)  # «Полный аудит»: право + безопасность + реестры + PDF
+    recheck_of: Mapped[str | None] = mapped_column(String(32), nullable=True)  # предыдущая проверка (для «Повторной проверки»)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

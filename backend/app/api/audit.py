@@ -39,10 +39,8 @@ def has_full_access(a: Audit, user: User | None) -> bool:
 
 
 def has_security_access(a: Audit, user: User | None) -> bool:
-    """Доступ к модулю безопасности и реестрам."""
-    if not settings.paywall_active or is_pro(user):
-        return True
-    return bool(a.paid_security)
+    """Security Skills и реестры входят в «Полный аудит» — отдельной покупки нет."""
+    return has_full_access(a, user)
 
 
 def _allowlist() -> set[str] | None:
@@ -88,7 +86,7 @@ async def create_audit(body: AuditIn, db: Session = Depends(get_db), user: User 
     a = Audit(url=url, host=host, user_id=user.id if user else None, site_id=site_id, status="queued",
               stages=initial_stages(deep), deep=deep, ip_hash=iph)
     db.add(a)
-    log_action(db, "audit.create", user.email if user else "anonymous", url, iph)
+    log_action(db, "audit.create", user.login if user else "anonymous", url, iph)
     db.commit()
     enqueue_audit(a.id)
     return {"id": a.id, "status": a.status, "url": a.url}
@@ -123,7 +121,7 @@ def summary(a: Audit, user: User | None) -> dict:
         "score": a.score, "counts": a.counts,
         "exposure": {"state": exp.get("state"), "min": exp.get("min"), "max": exp.get("max"), "subject_ru": exp.get("subject_ru")} if exp else None,
         "full_access": has_full_access(a, user), "paywall": settings.paywall_active, "owned": bool(user and a.user_id == user.id),
-        "deep": bool(a.deep),
+        "deep": bool(a.deep), "recheck_of": a.recheck_of,
     }
 
 
@@ -168,18 +166,37 @@ def get_result(audit_id: str, db: Session = Depends(get_db), user: User | None =
     }
     sec_access = has_security_access(a, user)
     security = registries = None
-    if a.deep:
-        if sec_access:
-            security = a.security
-            registries = a.registries
-        elif a.security:
-            # бесплатно — только сводка модуля безопасности, без находок и доказательств
-            s = a.security
-            security = {"locked": True, "score": s.get("score"), "counts": s.get("counts"),
-                        "by_severity": s.get("by_severity"), "disclaimer": s.get("disclaimer"), "findings": []}
+    if a.deep and sec_access:  # в бесплатной «Экспресс-проверке» безопасности и реестров нет
+        security = a.security
+        registries = a.registries
     return {**summary(a, user), "exposure_full": a.exposure, "results": results, "facts": public_facts, "ai": ai,
             "snapshot": a.snapshot, "security": security, "registries": registries, "deep": a.deep,
+            "comparison": _comparison(db, a) if full else None,
             "security_access": sec_access, "disclaimer": DISCLAIMER}
+
+
+def _comparison(db: Session, a: Audit) -> dict | None:
+    """«Повторная проверка»: что изменилось относительно предыдущего результата."""
+    prev = db.get(Audit, a.recheck_of) if a.recheck_of else None
+    if not prev or prev.status != "done":
+        return None
+    old = {r["rule_id"]: r for r in (prev.results or [])}
+    changes, resolved, appeared, unchanged = [], 0, 0, 0
+    for r in (a.results or []):
+        o = old.get(r["rule_id"])
+        if not o or o.get("status") == r.get("status"):
+            if r.get("status") == "FAIL":
+                unchanged += 1
+            continue
+        if o.get("status") == "FAIL":
+            resolved += 1
+        if r.get("status") == "FAIL":
+            appeared += 1
+        changes.append({"rule_id": r["rule_id"], "title": r.get("title", ""), "was": o.get("status"), "now": r.get("status")})
+    return {"previous_id": prev.id, "previous_at": prev.created_at.isoformat() if prev.created_at else None,
+            "score_before": prev.score, "score_after": a.score,
+            "security_before": (prev.security or {}).get("score"), "security_after": (a.security or {}).get("score"),
+            "resolved": resolved, "new_issues": appeared, "unchanged_issues": unchanged, "changes": changes}
 
 
 DISCLAIMER = ("Автоматизированный аудит является информационным инструментом и не является юридическим заключением. "

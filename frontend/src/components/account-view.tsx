@@ -12,7 +12,7 @@ import { Badge, Button, Dialog, DialogContent, DialogTrigger, Input, Label, cx }
 type Row = { id: string; url: string; host: string; status: string; score: number | null; exposure_min: number | null; exposure_max: number | null; created_at: string; paid_full: boolean; counts: { fail: number; review: number } | null };
 type SiteT = { id: string; url: string; host: string; monitoring: string; verified?: boolean; audits: Row[] };
 type Pay = { id: string; product: string; amount_rub: number; status: string; audit_id: string | null; created_at: string };
-type Me = { email: string; role: string; created_at: string; marketing_consent: boolean };
+type Me = { login: string; role: string; created_at: string; marketing_consent: boolean };
 
 const TABS = [["sites", "Мои сайты"], ["audits", "Проверки"], ["history", "История"], ["pdf", "PDF"], ["monitoring", "Мониторинг"], ["payments", "Платежи"], ["profile", "Профиль"]] as const;
 
@@ -94,7 +94,7 @@ export function AccountView() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Label>Личный кабинет</Label>
-          <h1 className="mt-2 text-[28px] font-semibold tracking-tight">{me.email}</h1>
+          <h1 className="mt-2 text-[28px] font-semibold tracking-tight">{me.login}</h1>
         </div>
         <Button variant="ghost" onClick={logout}><LogOut className="size-4" /> Выйти</Button>
       </div>
@@ -124,8 +124,7 @@ export function AccountView() {
                     <div className="text-[12.5px] text-dim">Проверок: {s.audits.length}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {s.verified ? <Badge color="var(--ok)">домен подтверждён</Badge> : <VerifyDomain siteId={s.id} host={s.host} onDone={load} />}
-                    <Button variant="primary" size="sm" onClick={() => runAudit(s.url)}>Проверить снова</Button>
+                                        <Button variant="primary" size="sm" onClick={() => runAudit(s.url)}>Проверить снова</Button>
                     <Button variant="ghost" size="sm" onClick={() => removeSite(s.id)} aria-label="Удалить"><Trash2 className="size-4" /></Button>
                   </div>
                 </div>
@@ -200,7 +199,7 @@ export function AccountView() {
 
         <Tabs.Content value="profile" className="mt-6 max-w-xl space-y-4">
           <div className="panel rounded-2xl p-5 text-[13.5px] text-muted">
-            <div>Email: <span className="text-text">{me.email}</span></div>
+            <div>Логин: <span className="text-text">{me.login}</span></div>
             <div className="mt-1">Аккаунт создан: {d(me.created_at)}</div>
             <div className="mt-1">Согласие на информационные сообщения: {me.marketing_consent ? "дано" : "не дано"}</div>
           </div>
@@ -215,59 +214,6 @@ export function AccountView() {
         </Tabs.Content>
       </Tabs.Root>
     </div>
-  );
-}
-
-type VerifyInfo = { token: string; methods: { id: string; title: string; steps: string[] }[] };
-
-function VerifyDomain({ siteId, host, onDone }: { siteId: string; host: string; onDone: () => void }) {
-  const [info, setInfo] = React.useState<VerifyInfo | null>(null);
-  const [msg, setMsg] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  async function open() {
-    setMsg("");
-    try {
-      setInfo(await api<VerifyInfo>(`/api/user/sites/${siteId}/verify`));
-    } catch { setMsg("Не удалось получить инструкцию"); }
-  }
-  async function check() {
-    setBusy(true);
-    setMsg("");
-    try {
-      await api(`/api/user/sites/${siteId}/verify`, { method: "POST" });
-      setMsg("Домен подтверждён!");
-      onDone();
-    } catch (e) { setMsg(e instanceof Error ? e.message : "Пока не подтверждено"); }
-    finally { setBusy(false); }
-  }
-  return (
-    <Dialog>
-      <DialogTrigger asChild><Button variant="secondary" size="sm" onClick={open}>Подтвердить домен</Button></DialogTrigger>
-      <DialogContent title={`Подтверждение домена ${host}`} wide>
-        <p className="text-[13px] leading-relaxed text-muted">
-          Подтверждение нужно, чтобы запускать активные проверки безопасности (их законно делать только на своём сайте).
-          Выберите любой способ, выполните шаги и нажмите «Проверить».
-        </p>
-        {!info ? (
-          <div className="mt-4 text-[13px] text-dim">Загрузка…</div>
-        ) : (
-          <div className="mt-4 space-y-4">
-            {info.methods.map((m) => (
-              <div key={m.id} className="rounded-xl border border-line bg-panel-2/40 p-4">
-                <div className="text-[14px] font-medium">{m.title}</div>
-                <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-muted">
-                  {m.steps.map((st, i) => <li key={i} className="break-all">{st}</li>)}
-                </ol>
-              </div>
-            ))}
-            <div className="flex items-center gap-3">
-              <Button variant="primary" onClick={check} disabled={busy}>Проверить</Button>
-              {msg && <span className="text-[13px] text-muted">{msg}</span>}
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
 

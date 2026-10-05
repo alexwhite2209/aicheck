@@ -9,7 +9,7 @@ import { backend } from "@/lib/server";
 
 export const metadata: Metadata = {
   title: "Тарифы",
-  description: "Базовая проверка сайта бесплатно. Полный отчёт с доказательствами, AI-объяснениями и PDF — по тарифу.",
+  description: "Экспресс-проверка бесплатно. Полный аудит — 299 ₽: законодательство РФ, безопасность, реестры, финансовая экспозиция и PDF.",
   alternates: { canonical: "/pricing" },
 };
 
@@ -18,11 +18,9 @@ export const dynamic = "force-dynamic"; // цены берём из базы н�
 type Prices = { payments_enabled: boolean; paywall: boolean; prices: { code: string; title: string; description: string; amount_rub: number }[] };
 
 const FEATURES: Record<string, string[]> = {
-  free: ["Score и финансовая экспозиция", "Все найденные проблемы и статусы", "Нормативные основания со ссылками", "Базовые рекомендации", "Без регистрации"],
-  full_report: ["Всё из бесплатной проверки", "Фрагменты кода и страницы-доказательства", "Дословные тексты норм", "AI-объяснения и рекомендации", "Cookie поимённо", "PDF-отчёт"],
-  security_report: ["Заголовки защиты, CORS, JWT, cookie", "Поиск секретов и утечек (.git, .env, бэкапы)", "Признаки XSS / SQLi / IDOR без эксплуатации", "Проверка домена (возраст, регистратор)", "ЕГРЮЛ/ЕГРИП и реестр операторов ПД", "Активные тесты — для подтверждённых доменов"],
-  recheck: ["Повторный полный аудит", "Сравнение «было → стало»", "История в личном кабинете"],
-  monitoring_month: ["Регулярные проверки сайта", "Уведомления об изменениях", "История результатов"],
+  free: ["Базовая проверка соответствия законодательству РФ", "Score и все найденные проблемы", "Нормативные основания со ссылками", "Базовые рекомендации", "Без регистрации"],
+  full_audit: ["Законодательство РФ: доказательства, тексты норм, AI-объяснения", "Security Skills: 10 пассивных проверок безопасности", "Реестры: домен, ЕГРЮЛ/ЕГРИП, реестр операторов ПД", "Финансовая экспозиция", "Полный PDF-отчёт"],
+  recheck: ["Полный повторный аудит", "Сравнение с предыдущим результатом: что исправлено, что появилось", "История в личном кабинете"],
 };
 
 export default async function PricingPage() {
@@ -31,18 +29,18 @@ export default async function PricingPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
       <div className="mx-auto max-w-2xl text-center">
-        <RiseWords as="h1" text="Базовая проверка — бесплатно" className="text-gradient text-[34px] font-semibold tracking-[-0.03em] sm:text-[46px]" />
-        <p className="mt-4 text-[15px] text-muted">Платите только за подробный отчёт, когда нужно передать его разработчику или юристу.</p>
+        <RiseWords as="h1" text="Экспресс-проверка — бесплатно" className="text-gradient text-[34px] font-semibold tracking-[-0.03em] sm:text-[46px]" />
+        <p className="mt-4 text-[15px] text-muted">Вход и регистрация — только логин и пароль. Платите только за подробный отчёт, когда нужно передать его разработчику или юристу.</p>
         {data && !data.paywall && <p className="mt-3 text-[13px] text-ok">Сейчас полный отчёт открыт бесплатно для всех проверок.</p>}
       </div>
-      <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <SlideIn from="left">
-          <Plan title="Базовая проверка" price="0 ₽" desc="Автоматический аудит публичной части сайта" features={FEATURES.free} cta={<Button asChild variant="secondary" className="w-full"><Link href="/">Проверить сайт</Link></Button>} />
+          <Plan title="Экспресс-проверка" price="0 ₽" desc="Базовая проверка соответствия законодательству РФ" features={FEATURES.free} cta={<Button asChild variant="secondary" className="w-full"><Link href="/">Проверить сайт</Link></Button>} />
         </SlideIn>
         {prices.map((p, i) => (
           <SlideIn key={p.code} from={i % 2 ? "right" : "left"} delay={0.05 * (i + 1)}>
-            <Plan title={p.title} price={rub(p.amount_rub)} desc={p.description} features={FEATURES[p.code] || []} highlight={p.code === "full_report"}
-              cta={<Button asChild variant={p.code === "full_report" ? "primary" : "secondary"} className="w-full"><Link href="/">{p.code === "full_report" ? "Начать с проверки" : "Подробнее"}</Link></Button>} />
+            <Plan title={p.title} price={rub(p.amount_rub)} desc={p.description} features={FEATURES[p.code] || []} highlight={p.code === "full_audit"}
+              cta={<Button asChild variant={p.code === "full_audit" ? "primary" : "secondary"} className="w-full"><Link href="/">{p.code === "full_audit" ? "Начать с проверки" : "Подробнее"}</Link></Button>} />
           </SlideIn>
         ))}
       </div>

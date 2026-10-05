@@ -13,13 +13,12 @@ from ..models import NormativeAct, NormativeArticle, OfficialSource, Price, Rule
 log = logging.getLogger(__name__)
 DATA = Path(__file__).parent / "data"
 
+# «Экспресс-проверка» (0 ₽) — бесплатный уровень, в таблице цен не хранится
 DEFAULT_PRICES = [
-    ("all_in_one", "Полная проверка — всё включено", "Юридический отчёт + проверка безопасности и реестры в одном. Выгоднее, чем по отдельности", 2990, 1),
-    ("full_report", "Полный отчёт", "Все доказательства, AI-объяснения, рекомендации и PDF-отчёт по одной проверке", 1490, 2),
-    ("security_report", "Проверка безопасности и реестры", "Технический аудит (OWASP): заголовки, утечки, секреты, CORS, JWT + проверка по ЕГРЮЛ, домену и реестру операторов ПД", 2490, 3),
-    ("recheck", "Повторная проверка", "Повторный полный аудит сайта со сравнением результатов", 690, 4),
-    ("monitoring_month", "Мониторинг — 1 месяц", "Автоматические проверки сайта и уведомления об изменениях", 990, 5),
+    ("full_audit", "Полный аудит", "Законодательство РФ + Security Skills + реестры + финансовая экспозиция + полный PDF-отчёт", 299, 1),
+    ("recheck", "Повторная проверка", "Полный повторный аудит + сравнение с предыдущим результатом", 499, 2),
 ]
+LEGACY_PRICE_CODES = ("all_in_one", "full_report", "security_report", "monitoring_month")
 
 
 def _d(s: str | None) -> date | None:
@@ -86,14 +85,17 @@ def seed_settings(db: Session) -> None:
     st = get_settings()
     if not db.get(Setting, "ai"):
         db.add(Setting(key="ai", value={"provider": "openrouter", "model": st.openrouter_model, "temperature": 0.2, "max_tokens": 2500, "enabled": True}))
-    if not db.scalars(select(Price)).first():
-        for code, title, desc, amount, sort in DEFAULT_PRICES:
+    for code, title, desc, amount, sort in DEFAULT_PRICES:
+        if not db.get(Price, code):  # цены, изменённые в админке, не перезаписываем
             db.add(Price(code=code, title=title, description=desc, amount_rub=amount, sort=sort))
-    if st.admin_email and st.admin_password:
+    for old in db.scalars(select(Price).where(Price.code.in_(LEGACY_PRICE_CODES))):
+        old.active = False  # старые тарифы (в т.ч. отдельная проверка безопасности) больше не продаются
+    admin_login = (st.admin_login or st.admin_email).strip().lower()
+    if admin_login and st.admin_password:
         from ..security import hash_password
-        u = db.scalars(select(User).where(User.email == st.admin_email.lower())).first()
+        u = db.scalars(select(User).where(User.login == admin_login)).first()
         if not u:
-            db.add(User(email=st.admin_email.lower(), password_hash=hash_password(st.admin_password), role="admin",
+            db.add(User(login=admin_login, password_hash=hash_password(st.admin_password), role="admin",
                         consent_version="admin-bootstrap"))
         elif u.role != "admin":
             u.role = "admin"

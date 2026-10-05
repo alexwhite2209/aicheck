@@ -73,17 +73,17 @@ def test_good_site_scores_high(client):
 
 
 def test_auth_csrf_and_admin(client):
-    r = client.post("/api/auth/register", json={"email": "u@test.ru", "password": "password123", "consent": False})
+    r = client.post("/api/auth/register", json={"login": "tester", "password": "password123", "consent": False})
     assert r.status_code == 422
-    r = client.post("/api/auth/register", json={"email": "u@test.ru", "password": "password123", "consent": True})
+    r = client.post("/api/auth/register", json={"login": "Tester", "password": "password123", "consent": True})
     assert r.status_code == 200
     csrf = client.cookies.get("csrf_token")
-    assert client.get("/api/auth/me").json()["user"]["email"] == "u@test.ru"
+    assert client.get("/api/auth/me").json()["user"]["login"] == "tester"
     assert client.post("/api/user/sites", json={"url": "example.ru"}).status_code == 403  # без CSRF-заголовка
     assert client.post("/api/user/sites", json={"url": "example.ru"}, headers={"X-CSRF-Token": csrf}).status_code == 200
     assert client.get("/api/admin/dashboard").status_code == 403
     client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf})
-    r = client.post("/api/auth/login", json={"email": "admin@test.ru", "password": "admin-pass-123"})
+    r = client.post("/api/auth/login", json={"login": "admin", "password": "admin-pass-123"})
     assert r.status_code == 200
     csrf = client.cookies.get("csrf_token")
     d = client.get("/api/admin/dashboard").json()
@@ -116,7 +116,10 @@ def test_public_rules(client):
 
 def test_security_methodology_public(client):
     d = client.get("/api/public/security-methodology").json()
-    assert d["counts"]["s1"] >= 12 and d["counts"]["s2"] >= 3
+    assert d["counts"]["skills"] == 10 and len(d["skills"]) == 10
+    assert all("mode" not in x for x in d["skills"])  # активных проб нет
+    names = " ".join(x["name"] for x in d["skills"]).lower()
+    assert "xss" not in names and "sql" not in names and "host header" not in names
     assert "github.com" in d["repo"]
 
 
@@ -124,17 +127,53 @@ def test_admin_grants_unlimited(client):
     # войти админом
     csrf = client.cookies.get("csrf_token")
     client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf})
-    r = client.post("/api/auth/login", json={"email": "admin@test.ru", "password": "admin-pass-123"})
+    r = client.post("/api/auth/login", json={"login": "admin", "password": "admin-pass-123"})
     assert r.status_code == 200
     csrf = client.cookies.get("csrf_token")
     users = client.get("/api/admin/users").json()["users"]
-    target = next(u for u in users if u["email"] == "u@test.ru")
+    target = next(u for u in users if u["login"] == "tester")
     assert target["pro"] is False
     g = client.put(f"/api/admin/users/{target['id']}", headers={"X-CSRF-Token": csrf}, json={"unlimited": True})
     assert g.status_code == 200 and g.json()["unlimited"] is True
     users2 = client.get("/api/admin/users").json()["users"]
-    assert next(u for u in users2 if u["email"] == "u@test.ru")["pro"] is True
+    assert next(u for u in users2 if u["login"] == "tester")["pro"] is True
     # админ не может снять с себя роль
-    me = next(u for u in users2 if u["email"] == "admin@test.ru")
+    me = next(u for u in users2 if u["login"] == "admin")
     bad = client.put(f"/api/admin/users/{me['id']}", headers={"X-CSRF-Token": csrf}, json={"role": "user"})
     assert bad.status_code == 400
+
+
+def test_login_is_not_email(client):
+    client.cookies.clear()
+    for bad in ("u@test.ru", "ab", "имя", "a b c"):
+        r = client.post("/api/auth/register", json={"login": bad, "password": "password123", "consent": True})
+        assert r.status_code == 422, bad
+    # email в запросе не требуется и не принимается как обязательное поле
+    r = client.post("/api/auth/register", json={"login": "second_user", "password": "password123", "consent": True})
+    assert r.status_code == 200 and "email" not in r.json()["user"]
+    dup = client.post("/api/auth/register", json={"login": "SECOND_USER", "password": "password123", "consent": True},
+                      headers={"X-CSRF-Token": client.cookies.get("csrf_token")})
+    assert dup.status_code == 409
+    client.post("/api/auth/logout", headers={"X-CSRF-Token": client.cookies.get("csrf_token")})
+    assert client.post("/api/auth/login", json={"login": "Second_User", "password": "password123"}).status_code == 200
+    client.cookies.clear()
+    assert client.post("/api/auth/login", json={"login": "second_user", "password": "wrong-password"}).status_code == 401
+
+
+def test_tariffs(client):
+    prices = {p["code"]: p["amount_rub"] for p in client.get("/api/prices").json()["prices"]}
+    assert prices == {"full_audit": 299, "recheck": 499}  # security_report (2490 ₽) и прочие старые тарифы не продаются
+
+
+def test_stale_sqlite_is_reset(tmp_path, monkeypatch):
+    import sqlite3
+    import app.db as dbm
+    f = tmp_path / "old.db"
+    con = sqlite3.connect(f)
+    con.execute("CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL)")
+    con.commit(); con.close()
+    from sqlalchemy import create_engine
+    monkeypatch.setattr(dbm.settings, "database_url", f"sqlite:///{f.as_posix()}")
+    monkeypatch.setattr(dbm, "engine", create_engine(f"sqlite:///{f.as_posix()}"))
+    dbm.reset_stale_sqlite()
+    assert not f.exists() and list(tmp_path.glob("old.db.bak-*"))

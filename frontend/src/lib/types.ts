@@ -25,10 +25,17 @@ export type Exposure = {
 
 export type Service = { service_id: string; name: string; type: string; type_ru: string; purpose: string; owner: string; jurisdiction: string; domains: string[]; found_on: string[] };
 
+export type Comparison = {
+  previous_id: string; previous_at: string | null; score_before: number | null; score_after: number | null;
+  security_before: number | null; security_after: number | null;
+  resolved: number; new_issues: number; unchanged_issues: number;
+  changes: { rule_id: string; title: string; was: string; now: string }[];
+};
+
 export type AuditResult = {
   id: string; url: string; host: string; status: string; created_at: string; finished_at: string; score: number | null;
   counts: { fail: number; review: number; pass: number; unknown: number; na: number };
-  exposure: { state: string; min: number; max: number } | null; exposure_full: Exposure; full_access: boolean; paywall: boolean; owned: boolean;
+  exposure: { state: string; min: number; max: number } | null; exposure_full: Exposure; full_access: boolean; paywall: boolean; owned: boolean; recheck_of?: string | null; comparison?: Comparison | null;
   results: Result[]; ai: { used?: boolean; summary?: string | null; items: Record<string, { explanation?: string | null; recommendation?: string | null }>; locked?: boolean; policy_remarks?: string[]; model?: string };
   facts: {
     site_type: string; site_type_ru: string; mode: string; final_url: string; https: Record<string, unknown>; pages: { url: string; title: string; status: number; depth: number }[];
@@ -56,13 +63,11 @@ export type SecFinding = {
 };
 
 export type SecurityBlock = {
-  locked?: boolean;
   score: number | null;
   counts: { fail: number; review: number; pass: number; info: number };
   by_severity?: Record<string, number>;
   findings: SecFinding[];
   disclaimer?: string;
-  active_available?: boolean;
 };
 
 export type Registries = {

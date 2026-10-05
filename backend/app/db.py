@@ -1,8 +1,11 @@
+import logging
+import shutil
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
@@ -50,3 +53,34 @@ def session_scope() -> Iterator[Session]:
         raise
     finally:
         db.close()
+
+
+def reset_stale_sqlite() -> None:
+    """Локальная SQLite без миграций: если схема файла не совпадает с моделями (после обновления кода),
+    старый файл откладывается в .bak-<время>, и создаётся чистая база. Для PostgreSQL ничего не делает."""
+    if not settings.database_url.startswith("sqlite"):
+        return
+    path = Path(settings.database_url.removeprefix("sqlite:///"))
+    if not path.exists():
+        return
+    insp = inspect(engine)
+    stale = False
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        db_cols = {c["name"]: c for c in insp.get_columns(table.name)}
+        model_cols = {c.name for c in table.columns}
+        if model_cols - set(db_cols):
+            stale = True
+        # лишняя старая колонка NOT NULL без значения по умолчанию сломает вставку новых строк
+        if any(not c["nullable"] and c["default"] is None and not c.get("primary_key") and n not in model_cols for n, c in db_cols.items()):
+            stale = True
+    if not stale:
+        return
+    engine.dispose()
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    for suffix in ("", "-wal", "-shm"):
+        src = Path(str(path) + suffix)
+        if src.exists():
+            shutil.move(str(src), f"{src}.bak-{stamp}")
+    logging.getLogger(__name__).warning("Схема локальной базы устарела: старый файл сохранён как %s.bak-%s, создана новая база", path.name, stamp)

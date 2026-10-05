@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Создаёт .env с надёжными случайными паролями. Спрашивает только домен и email администратора.
+# Создаёт .env с надёжными случайными паролями. Спрашивает только домен, логин администратора и email для документов.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] && { echo ".env уже существует — ничего не меняю."; exit 0; }
@@ -16,11 +16,13 @@ if ! printf '%s' "$DOMAIN" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]
   exit 1
 fi
 
-read -r -p "Email администратора (для входа в /admin): " ADMIN_EMAIL
-ADMIN_EMAIL="$(clean "$ADMIN_EMAIL")"
-if ! printf '%s' "$ADMIN_EMAIL" | grep -Eq '^[^@ ]+@[^@ ]+\.[^@ ]+$'; then
-  echo "Email «$ADMIN_EMAIL» выглядит неверно."; exit 1
+read -r -p "Логин администратора (для входа в /admin, 3–32 символа: латиница, цифры, _ . -): " ADMIN_LOGIN
+ADMIN_LOGIN="$(clean "$ADMIN_LOGIN" | tr 'A-Z' 'a-z')"
+if ! printf '%s' "$ADMIN_LOGIN" | grep -Eq '^[a-z0-9][a-z0-9_.-]{2,31}$'; then
+  echo "Логин «$ADMIN_LOGIN» выглядит неверно."; exit 1
 fi
+read -r -p "Email для обращений в документах сайта (OPERATOR_EMAIL, не для входа): " OPERATOR_EMAIL
+OPERATOR_EMAIL="$(clean "$OPERATOR_EMAIL")"
 ADMIN_PASSWORD="$(rand 10)"
 
 cat > .env <<EOF
@@ -35,7 +37,7 @@ POSTGRES_PASSWORD=$(rand 24)
 JWT_SECRET=$(rand 32)
 IP_HASH_SECRET=$(rand 32)
 
-ADMIN_EMAIL=${ADMIN_EMAIL}
+ADMIN_LOGIN=${ADMIN_LOGIN}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 
 # AI-объяснения (необязательно). Без ключа отчёты строятся по шаблонам правил
@@ -54,7 +56,7 @@ OPERATOR_NAME=
 OPERATOR_INN=
 OPERATOR_OGRN=
 OPERATOR_ADDRESS=
-OPERATOR_EMAIL=${ADMIN_EMAIL}
+OPERATOR_EMAIL=${OPERATOR_EMAIL}
 EOF
 chmod 600 .env
 
@@ -62,7 +64,7 @@ echo
 echo "=============================================================="
 echo " Данные для входа в админку (запишите, повторно не покажем):"
 echo "   адрес:  https://${DOMAIN}/login"
-echo "   email:  ${ADMIN_EMAIL}"
+echo "   логин:  ${ADMIN_LOGIN}"
 echo "   пароль: ${ADMIN_PASSWORD}"
 echo "=============================================================="
 echo "Реквизиты OPERATOR_* заполните в .env позже (nano .env), затем: docker compose up -d --build frontend"

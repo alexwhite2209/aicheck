@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from .api import admin, audit, auth, payments, public, report, user
 from .config import get_settings
-from .db import Base, SessionLocal, engine
+from .db import Base, SessionLocal, engine, reset_stale_sqlite
 from .legal.seed import seed_all
 from .security import csrf_ok
 
@@ -18,6 +18,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    reset_stale_sqlite()
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed_all(db)

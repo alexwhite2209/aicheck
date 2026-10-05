@@ -53,15 +53,12 @@ def scan(facts: dict, sec: dict) -> list[Finding]:
     _secrets(out, pages, sec.get("external_js") or [])
     _exposure(out, sec.get("collected") or {})
     _cors(out, sec.get("collected") or {})
-    _sql_errors(out, pages)
     _redirect_params(out, pages)
     _jwt(out, sec.get("cookies_raw") or [], pages)
     _software(out, headers, pages)
     _mixed_content(out, pages, https)
     _api_surface(out, facts, pages)
     _access_hints(out, facts, pages)
-    _path_traversal(out, pages)
-    _csrf(out, facts, sec.get("cookies_raw") or [])
     _meta_links(out, pages)
 
     for f in out:
@@ -179,18 +176,6 @@ def _cors(out, collected):
                            evidence=[{"page": "", "label": "Настройка доступа", "snippet": f"разрешено: {acao}"}], confidence="confirmed", tech=f"Access-Control-Allow-Origin: {acao}"))
 
 
-def _sql_errors(out, pages):
-    ev = []
-    for p in pages:
-        m = sig.SQL_ERROR_PATTERNS.search(p.get("text", "")[:60000] or "")
-        if m:
-            ev.append({"page": p.get("url", ""), "label": "Сообщение об ошибке СУБД", "snippet": m.group(0)[:160]})
-    if ev:
-        out.append(Finding("SEC_SQL_ERRORS_006", "Ошибки базы данных на виду", "Конфигурация", "Сайт показывает посетителям ошибки базы данных", "medium", REVIEW,
-                           f"На страницах видны технические ошибки базы данных ({len(ev)}). Они подсказывают злоумышленнику, как устроен сайт, и указывают, что ввод проверяется не до конца.",
-                           "Скройте технические ошибки от посетителей (их должен видеть только сервер в журнале) и попросите разработчика проверить формы на уязвимость к подмене запросов к базе.",
-                           evidence=ev[:5], confidence="probable", tech="сообщения СУБД в теле ответа (признак SQL-инъекции)"))
-
 
 def _redirect_params(out, pages):
     found = {}
@@ -300,32 +285,6 @@ def _api_surface(out, facts, pages):
                            evidence=[{"page": e, "label": "Адрес API", "snippet": e} for e in list(endpoints)[:6]], confidence="probable", tech="endpoints: " + ", ".join(list(endpoints)[:6])))
 
 
-def _path_traversal(out, pages):
-    found = {}
-    for p in pages:
-        for ln in p.get("links", []):
-            q = parse_qs(urlsplit(ln.get("href", "")).query)
-            for param, vals in q.items():
-                if param.lower() in sig.PATH_PARAMS and any(sig.PATH_VALUE_RE.search(v) for v in vals):
-                    found.setdefault(param.lower(), {"page": p.get("url", ""), "label": f"параметр ?{param}=", "snippet": ln.get("href", "")[:160]})
-    if found:
-        out.append(Finding("SEC_PATH_PARAM_013", "Можно попытаться вытащить чужие файлы", "Конфигурация", "В адресах передаётся имя файла — риск чтения чужих файлов", "low", REVIEW,
-                           "На сайте есть ссылки, где имя файла подставляется прямо в адрес. Если это не ограничено, злоумышленник может подставить путь к служебному файлу сервера и прочитать его.",
-                           "Попросите разработчика выдавать только заранее разрешённые файлы, а не любой файл по имени из адреса.",
-                           evidence=list(found.values())[:5], confidence="probable", tech="параметры-пути: " + ", ".join(found)))
-
-
-def _csrf(out, facts, cookies):
-    forms = [f for f in facts.get("forms", []) if f.get("has_pd") and (f.get("method", "").lower() == "post" or f.get("purpose") in ("auth", "order"))]
-    if not forms:
-        return
-    has_token = any(sig.CSRF_FIELD_RE.search(" ".join(h.get("name", "") for h in f.get("fields", [])) + " " + " ".join(f.get("hidden_names", []))) for f in facts.get("forms", []))
-    weak_same = any((c.get("sameSite") or "").lower() in ("", "none") and re.search(r"sess|sid|auth|token", c.get("name", ""), re.I) for c in cookies)
-    if not has_token and weak_same:
-        out.append(Finding("SEC_CSRF_014", "Форму можно отправить за пользователя", "Защита данных", "Нет защиты от отправки формы «от чужого имени»", "medium", REVIEW,
-                           "В формах сайта не видно защиты от подделки запросов. Из-за этого мошенник может подготовить страницу, которая втихую отправит форму от имени вашего вошедшего пользователя (например, сменит его данные).",
-                           "Попросите разработчика добавить в формы скрытый защитный код (CSRF-токен) и флаг SameSite у файлов входа.",
-                           evidence=[_form_ev(f) for f in forms[:3]], touches_pd=True, confidence="manual", tech="нет CSRF-токена + cookie без SameSite"))
 
 
 def _form_ev(form: dict) -> dict:

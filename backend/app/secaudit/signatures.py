@@ -57,15 +57,6 @@ SECRET_FALSE_POSITIVE = re.compile(
     r"(6L[0-9A-Za-z_-]{38})"             # reCAPTCHA site key формата 6L...
     r"|data-sitekey|pk_live_|pk_test_|publishableKey|VAPID|измерител|metrika|gtm-|ga_measurement", re.I)
 
-# ---------- SQL-ошибки в ответе (признак SQLi, не эксплуатация)
-SQL_ERROR_PATTERNS = re.compile(
-    r"(SQL syntax.*MySQL|valid MySQL result|mysql_fetch|mysqli?_|"
-    r"PostgreSQL.*ERROR|pg_query\(\)|pg_exec|syntax error at or near|"
-    r"ORA-\d{5}|Oracle error|"
-    r"Microsoft SQL (?:Server|Native)|ODBC SQL Server Driver|Unclosed quotation mark|"
-    r"SQLite3?::|SQLiteException|sqlite3.OperationalError|"
-    r"Warning:\s+(?:mysqli?|pg|oci|mssql)_)", re.I)
-
 # ---------- параметры open redirect
 REDIRECT_PARAMS = {"url", "next", "redirect", "redirect_uri", "redirect_url", "return", "returnurl", "return_url",
                    "goto", "dest", "destination", "continue", "r", "u", "link", "to", "out", "target", "forward"}
@@ -84,7 +75,6 @@ EXPOSURE_PATHS: list[tuple[str, str, str, str]] = [
     ("/backup.zip", "backup_zip", "Доступен backup.zip", "critical"),
     ("/dump.sql", "dump_sql", "Доступен дамп БД dump.sql", "critical"),
     ("/wp-config.php.bak", "wpconfig_bak", "Доступна резервная копия wp-config.php", "critical"),
-    ("/.well-known/norma-verify.txt", "verify", "Файл подтверждения владения (информационно)", "info"),
 ]
 EXPOSURE_CONFIRM = {  # как убедиться, что это реально утечка, а не кастомная 200-страница
     "git": lambda b: "[core]" in b or "repositoryformatversion" in b,
@@ -98,7 +88,6 @@ EXPOSURE_CONFIRM = {  # как убедиться, что это реально 
     "backup_zip": lambda b: True,
     "dump_sql": lambda b: bool(re.search(r"(?i)(INSERT INTO|CREATE TABLE|DROP TABLE)", b or "")),
     "wpconfig_bak": lambda b: "DB_PASSWORD" in (b or "") or "<?php" in (b or ""),
-    "verify": lambda b: True,
 }
 
 # ---------- признаки API
@@ -118,6 +107,3 @@ CMS_PATTERNS = [
 ACCESS_ID_PARAM = re.compile(r"[?&](id|user_id|uid|account|order|order_id|invoice|doc|file_id|num)=\d+", re.I)
 
 # параметры, похожие на путь к файлу (поверхность Path Traversal / LFI)
-PATH_PARAMS = {"file", "path", "page", "include", "template", "doc", "document", "download", "dir", "folder", "load", "read", "view", "img", "image", "name"}
-PATH_VALUE_RE = re.compile(r"[/\\]|\.\.|\.(php|html?|txt|xml|pdf|docx?|jpe?g|png)$", re.I)
-CSRF_FIELD_RE = re.compile(r"csrf|xsrf|_token|authenticity|nonce|__requestverification", re.I)

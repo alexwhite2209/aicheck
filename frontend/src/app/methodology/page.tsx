@@ -17,8 +17,8 @@ type Data = {
 };
 
 type SecMethod = {
-  repo: string; note: string; counts: { s1: number; s2: number };
-  skills: { name: string; category: string; mode: string; status: string; sources: { slug: string; url: string }[] }[];
+  repo: string; note: string; counts: { skills: number };
+  skills: { name: string; category: string; does: string; sources: { slug: string; url: string }[] }[];
 };
 
 export default async function MethodologyPage() {
@@ -85,23 +85,19 @@ export default async function MethodologyPage() {
       </div>
       {sec && (
         <>
-          <h2 className="mt-14 text-[22px] font-semibold tracking-tight">Проверка безопасности (платно)</h2>
+          <h2 className="mt-14 text-[22px] font-semibold tracking-tight">Security Skills (входят в «Полный аудит»)</h2>
           <p className="mt-3 max-w-3xl text-[14px] leading-relaxed text-muted">
-            Модуль безопасности построен по методике OWASP ({sec.counts.s1} проверок работают на любом сайте, {sec.counts.s2} — только
-            для сайтов, подтверждённых владельцем). Мы проверяем сайт так, как это видит обычный посетитель, и ничего не взламываем:
-            не достаём данные из базы, не заходим в чужие аккаунты, не обходим капчу. Активные тесты (попытки взлома в безопасном
-            режиме) запускаются только после того, как вы докажете, что сайт ваш.
-          </p>
+            Security Skills — {sec.counts.skills} пассивных направлений по методике OWASP. Сервис открывает сайт, смотрит только то,
+            что он сам публично отдаёт, фиксирует факт, сопоставляет и даёт рекомендацию. Мы ничего не взламываем: не отправляем
+            payload-ы, не подбираем ключи, не обращаемся к чужим объектам и аккаунтам, не обходим капчу. Результаты сортируются
+            внутренним триажем: дедупликация, снижение ложных срабатываний, критичность и уверенность.</p>
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             {sec.skills.map((s) => (
               <div key={s.name} className="panel flex items-center justify-between gap-3 rounded-xl p-4">
                 <div>
                   <div className="text-[14px] font-medium">{s.name}</div>
-                  <div className="text-[12px] text-dim">{s.category}</div>
+                  <div className="text-[12px] text-dim">{s.does}</div>
                 </div>
-                <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11.5px] ${s.mode === "S1" ? "border-ok/30 text-ok" : "border-line-2 text-dim"}`}>
-                  {s.mode === "S1" ? "проверяется" : "по подтверждению домена"}
-                </span>
               </div>
             ))}
           </div>

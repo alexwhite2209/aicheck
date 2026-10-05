@@ -15,31 +15,31 @@ from .deps import current_user, request_ip_hash
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 CONSENT_VERSION = "2026-10-03"
-EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,24}$")
+LOGIN_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{2,31}$")
 
 
 class RegisterIn(BaseModel):
-    email: str = Field(max_length=254)
+    login: str = Field(max_length=64)
     password: str = Field(min_length=8, max_length=128)
     consent: bool  # отдельное согласие на обработку ПД (ст. 9 152-ФЗ)
     marketing: bool = False  # отдельное согласие на рассылки (ст. 18 38-ФЗ), необязательное
 
-    @field_validator("email")
+    @field_validator("login")
     @classmethod
-    def _email(cls, v: str) -> str:
+    def _login(cls, v: str) -> str:
         v = v.strip().lower()
-        if not EMAIL_RE.match(v):
-            raise ValueError("Некорректный email")
+        if not LOGIN_RE.match(v):
+            raise ValueError("Логин: 3–32 символа, латинские буквы, цифры, «_», «.» или «-»")
         return v
 
 
 class LoginIn(BaseModel):
-    email: str = Field(max_length=254)
+    login: str = Field(max_length=64)
     password: str = Field(max_length=128)
 
 
 def user_out(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "role": u.role, "created_at": u.created_at.isoformat(),
+    return {"id": u.id, "login": u.login, "role": u.role, "created_at": u.created_at.isoformat(),
             "marketing_consent": u.marketing_consent, "unlimited": u.unlimited,
             "pro": bool(u.role == "admin" or u.unlimited)}
 
@@ -51,14 +51,14 @@ def register(body: RegisterIn, response: Response, db: Session = Depends(get_db)
     ok, _ = limiter.hit(f"reg:{iph}", 5, 3600)
     if not ok:
         raise HTTPException(429, "Слишком много попыток регистрации. Попробуйте позже.")
-    if db.scalars(select(User).where(User.email == body.email)).first():
-        raise HTTPException(409, "Пользователь с таким email уже зарегистрирован")
+    if db.scalars(select(User).where(User.login == body.login)).first():
+        raise HTTPException(409, "Пользователь с таким логином уже зарегистрирован")
     now = datetime.now(timezone.utc)
-    u = User(email=body.email, password_hash=hash_password(body.password), consent_version=CONSENT_VERSION, consent_at=now,
+    u = User(login=body.login, password_hash=hash_password(body.password), consent_version=CONSENT_VERSION, consent_at=now,
              marketing_consent=body.marketing)
     db.add(u)
     db.flush()
-    log_action(db, "auth.register", u.email, u.id, iph, consent_version=CONSENT_VERSION, marketing=body.marketing)
+    log_action(db, "auth.register", u.login, u.id, iph, consent_version=CONSENT_VERSION, marketing=body.marketing)
     db.commit()
     csrf = set_session(response, create_token(u.id, u.role))
     return {"user": user_out(u), "csrf": csrf}
@@ -66,17 +66,17 @@ def register(body: RegisterIn, response: Response, db: Session = Depends(get_db)
 
 @router.post("/login")
 def login(body: LoginIn, response: Response, db: Session = Depends(get_db), iph: str = Depends(request_ip_hash)):
-    email = body.email.strip().lower()
+    login_name = body.login.strip().lower()
     ok, _ = limiter.hit(f"login:{iph}", 10, 600)
-    ok2, _ = limiter.hit(f"login-email:{email}", 8, 600)
+    ok2, _ = limiter.hit(f"login-name:{login_name}", 8, 600)
     if not (ok and ok2):
         raise HTTPException(429, "Слишком много попыток входа. Подождите 10 минут.")
-    u = db.scalars(select(User).where(User.email == email)).first()
+    u = db.scalars(select(User).where(User.login == login_name)).first()
     if not u or not u.is_active or not verify_password(body.password, u.password_hash):
-        log_action(db, "auth.login_failed", email, "", iph)
+        log_action(db, "auth.login_failed", login_name, "", iph)
         db.commit()
-        raise HTTPException(401, "Неверный email или пароль")
-    log_action(db, "auth.login", u.email, u.id, iph)
+        raise HTTPException(401, "Неверный логин или пароль")
+    log_action(db, "auth.login", u.login, u.id, iph)
     db.commit()
     csrf = set_session(response, create_token(u.id, u.role))
     return {"user": user_out(u), "csrf": csrf}

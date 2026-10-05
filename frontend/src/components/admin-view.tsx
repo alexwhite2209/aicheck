@@ -123,7 +123,7 @@ function AuditsTab() {
   );
 }
 
-type AdminUser = { id: string; email: string; role: string; created_at: string; audits: number; unlimited: boolean; pro: boolean; is_active: boolean };
+type AdminUser = { id: string; login: string; role: string; created_at: string; audits: number; unlimited: boolean; pro: boolean; is_active: boolean };
 
 function UsersTab() {
   const { data, reload } = useLoad<{ users: AdminUser[] }>("/api/admin/users");
@@ -137,14 +137,14 @@ function UsersTab() {
   }
   return (
     <div className="space-y-3">
-      <p className="max-w-3xl text-[13px] text-muted">Безлимит — полный отчёт и проверка безопасности бесплатно и без ограничений по частоте. Роль «админ» даёт доступ к этой панели. Администраторам всё доступно бесплатно по умолчанию.</p>
+      <p className="max-w-3xl text-[13px] text-muted">Безлимит — «Полный аудит» (в т.ч. проверка безопасности) бесплатно и без ограничений по частоте. Роль «админ» даёт доступ к этой панели. Администраторам всё доступно бесплатно по умолчанию.</p>
       {msg && <div className="text-[13px] text-risk">{msg}</div>}
       <div className="panel overflow-x-auto rounded-2xl">
         <table className="w-full min-w-[760px] text-left text-[13px]">
-          <thead className="text-dim"><tr>{["Email", "Роль", "Доступ", "Проверок", "Регистрация", "Управление"].map((h) => <th key={h} className="p-3 font-medium">{h}</th>)}</tr></thead>
+          <thead className="text-dim"><tr>{["Логин", "Роль", "Доступ", "Проверок", "Регистрация", "Управление"].map((h) => <th key={h} className="p-3 font-medium">{h}</th>)}</tr></thead>
           <tbody>{data?.users.map((u) => (
             <tr key={u.id} className="border-t border-line text-muted">
-              <td className="p-3 text-text">{u.email}{!u.is_active && <span className="ml-2 text-risk">(заблокирован)</span>}</td>
+              <td className="p-3 text-text">{u.login}{!u.is_active && <span className="ml-2 text-risk">(заблокирован)</span>}</td>
               <td className="p-3">{u.role === "admin" ? <Badge color="var(--ok)">админ</Badge> : "пользователь"}</td>
               <td className="p-3">{u.pro ? <Badge color="var(--ok)">безлимит</Badge> : "обычный"}</td>
               <td className="p-3 tabular-nums">{u.audits}</td>

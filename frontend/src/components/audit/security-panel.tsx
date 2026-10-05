@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Globe, Lock, ShieldCheck } from "lucide-react";
+import { ChevronDown, Globe, ShieldCheck } from "lucide-react";
 import * as React from "react";
 import type { Registries, SecFinding, SecurityBlock } from "@/lib/types";
 import { CountUp } from "../effects";
@@ -22,7 +22,7 @@ const ST: Record<string, { ru: string; color: string }> = {
   INFO: { ru: "Информация", color: "var(--unk)" },
 };
 
-export function SecurityPanel({ security, registries, onBuy, busy }: { security: SecurityBlock; registries: Registries | null; onBuy?: () => void; busy?: boolean }) {
+export function SecurityPanel({ security, registries }: { security: SecurityBlock; registries: Registries | null }) {
   const s = security;
   const score = s.score;
   const color = score === null ? "var(--unk)" : score >= 80 ? "var(--ok)" : score >= 55 ? "var(--warn)" : "var(--risk)";
@@ -31,7 +31,7 @@ export function SecurityPanel({ security, registries, onBuy, busy }: { security:
       <div className="mb-4 flex items-center gap-2">
         <ShieldCheck className="size-5 text-muted" />
         <h2 className="text-[20px] font-semibold tracking-tight">Безопасность сайта</h2>
-        <Badge className="border-line-2 text-dim">OWASP · платная проверка</Badge>
+        <Badge className="border-line-2 text-dim">Security Skills · в полном аудите</Badge>
       </div>
 
       <div className="panel grid gap-5 rounded-2xl p-6 sm:grid-cols-[auto_1fr]">
@@ -53,28 +53,7 @@ export function SecurityPanel({ security, registries, onBuy, busy }: { security:
         </div>
       </div>
 
-      {s.locked ? (
-        <div className="panel border-beam relative mt-4 overflow-hidden rounded-2xl p-6">
-          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-            <div className="flex items-start gap-3">
-              <Lock className="mt-0.5 size-5 text-muted" />
-              <div>
-                <div className="text-[16px] font-semibold">Технический аудит безопасности и проверка по реестрам</div>
-                <p className="mt-1 max-w-xl text-[13px] text-muted">
-                  Найдено {s.counts.fail + s.counts.review} замечаний. В полном отчёте: какие именно заголовки, утечки,
-                  секреты, CORS и JWT, где это на сайте, как исправить, плюс проверка домена, ЕГРЮЛ и реестра операторов ПД.
-                </p>
-              </div>
-            </div>
-            {onBuy && (
-              <button onClick={onBuy} disabled={busy} className="shrink-0 rounded-xl bg-white px-5 py-3 text-[14px] font-medium text-black transition hover:bg-white/90 disabled:opacity-50">
-                Открыть проверку безопасности
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <>
+      <>
           <div className="mt-4 space-y-3">
             {s.findings.filter((f) => f.status !== "PASS").map((f) => <SecCard key={f.id} f={f} />)}
             {s.findings.filter((f) => f.status !== "PASS").length === 0 && (
@@ -82,14 +61,7 @@ export function SecurityPanel({ security, registries, onBuy, busy }: { security:
             )}
           </div>
           {registries && <RegistriesCard r={registries} />}
-          {s.active_available === false && (
-            <p className="mt-4 text-[12px] leading-relaxed text-dim">
-              Активные тесты (XSS, SQL-инъекции, IDOR, Host-header) выполняются только для доменов, подтверждённых владельцем,
-              и в безопасном, неразрушающем режиме. На этой странице — результаты пассивной проверки публичной части сайта.
-            </p>
-          )}
-        </>
-      )}
+      </>
     </section>
   );
 }

@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 import { api, ApiError } from "@/lib/api";
 import { dt, rub } from "@/lib/format";
-import type { AuditResult, StatusResp } from "@/lib/types";
+import type { AuditResult, Comparison, StatusResp } from "@/lib/types";
 import { DISCLAIMER } from "../brand";
 import { Magnetic, Spotlight } from "../effects";
 import { Badge, Button, Label, cx } from "../ui";
@@ -54,23 +54,27 @@ export function AuditView({ id }: { id: string }) {
   }, [id]);
 
   // возврат с оплаты
+  const handledPayment = React.useRef("");
   React.useEffect(() => {
     const pid = params.get("payment");
-    if (!pid || !result || result.full_access) return;
+    if (!pid || !result || handledPayment.current === pid) return;
     let n = 0;
     const t = setInterval(async () => {
       n++;
       try {
-        const p = await api<{ status: string }>(`/api/payments/${pid}/status`);
+        const p = await api<{ status: string; audit_id: string | null }>(`/api/payments/${pid}/status`);
         if (p.status === "succeeded") {
           clearInterval(t);
-          setResult(await api<AuditResult>(`/api/audit/${id}/result`));
+          handledPayment.current = pid;
+          // «Повторная проверка» запускает новую проверку — переходим на неё
+          if (p.audit_id && p.audit_id !== id) router.push(`/audit/${p.audit_id}`);
+          else setResult(await api<AuditResult>(`/api/audit/${id}/result`));
         }
       } catch {}
       if (n > 20) clearInterval(t);
     }, 2000);
     return () => clearInterval(t);
-  }, [params, result, id]);
+  }, [params, result, id, router]);
 
   if (error) return <Centered title={error} action={<Button asChild variant="primary"><Link href="/">Новая проверка</Link></Button>} />;
   if (!status)
@@ -112,10 +116,12 @@ function ResultScreen({ r, onUpdate }: { r: AuditResult; onUpdate: (r: AuditResu
   const [msg, setMsg] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [prices, setPrices] = React.useState<{ payments_enabled: boolean; prices: { code: string; title: string; description: string; amount_rub: number }[] } | null>(null);
+  const [receiptEmail, setReceiptEmail] = React.useState("");
   const router = useRouter();
   React.useEffect(() => {
     api<typeof prices>("/api/prices").then(setPrices).catch(() => {});
   }, []);
+  const priceOf = (code: string) => prices?.prices.find((p) => p.code === code);
   const issues = r.results.filter((x) => x.status === "FAIL" || x.status === "REVIEW");
   const unknown = r.results.filter((x) => x.status === "UNKNOWN");
   const passed = r.results.filter((x) => x.status === "PASS");
@@ -137,11 +143,11 @@ function ResultScreen({ r, onUpdate }: { r: AuditResult; onUpdate: (r: AuditResu
     }
   }
 
-  async function buy(product = "full_report") {
+  async function buy(product = "full_audit") {
     setBusy(true);
     setMsg("");
     try {
-      const p = await api<{ confirmation_url: string }>("/api/payments/create", { method: "POST", body: { product, audit_id: r.id } });
+      const p = await api<{ confirmation_url: string }>("/api/payments/create", { method: "POST", body: { product, audit_id: r.id, receipt_email: receiptEmail } });
       window.location.href = p.confirmation_url;
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) router.push(`/register?claim=${r.id}&buy=1`);
@@ -201,11 +207,11 @@ function ResultScreen({ r, onUpdate }: { r: AuditResult; onUpdate: (r: AuditResu
           <div className="panel border-beam relative mt-6 overflow-hidden rounded-2xl p-6 sm:p-7">
             <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
               <div>
-                <div className="text-[17px] font-semibold tracking-tight">Полный отчёт с доказательствами</div>
-                <p className="mt-1 max-w-xl text-[13.5px] text-muted">Фрагменты кода и страницы-доказательства, дословные тексты норм, AI-объяснения, cookie поимённо и PDF-отчёт.</p>
+                <div className="text-[17px] font-semibold tracking-tight">Полный аудит{priceOf("full_audit") ? ` — ${rub(priceOf("full_audit")!.amount_rub)}` : ""}</div>
+                <p className="mt-1 max-w-xl text-[13.5px] text-muted">Доказательства и тексты норм, AI-объяснения, проверка безопасности (Security Skills), реестры, финансовая экспозиция и полный PDF-отчёт.</p>
               </div>
               <Magnetic>
-                <Button variant="primary" size="lg" onClick={() => buy("full_report")} disabled={busy} className="uppercase">Получить полный отчёт <ArrowRight className="size-4" /></Button>
+                <Button variant="primary" size="lg" onClick={() => buy("full_audit")} disabled={busy || !prices?.payments_enabled} className="uppercase">Получить полный аудит <ArrowRight className="size-4" /></Button>
               </Magnetic>
             </div>
           </div>
@@ -252,7 +258,9 @@ function ResultScreen({ r, onUpdate }: { r: AuditResult; onUpdate: (r: AuditResu
           )}
         </section>
 
-        {r.security && <SecurityPanel security={r.security} registries={r.registries ?? null} onBuy={r.security.locked ? () => buy("security_report") : undefined} busy={busy} />}
+        {r.comparison && <ComparisonPanel c={r.comparison} />}
+
+        {r.security && <SecurityPanel security={r.security} registries={r.registries ?? null} />}
 
         {prices && prices.prices.length > 0 && (
           <section className="mt-14">
@@ -261,25 +269,33 @@ function ResultScreen({ r, onUpdate }: { r: AuditResult; onUpdate: (r: AuditResu
               <div className="relative">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <Label>Бесплатная проверка завершена</Label>
-                    <h2 className="mt-2 text-[22px] font-semibold tracking-tight">Что можно открыть дополнительно</h2>
+                    <Label>{r.full_access ? "Полный аудит" : "Экспресс-проверка завершена"}</Label>
+                    <h2 className="mt-2 text-[22px] font-semibold tracking-tight">{r.full_access ? "Проверить сайт ещё раз" : "Что можно открыть дополнительно"}</h2>
                   </div>
                   <Button asChild variant="ghost" size="sm"><Link href="/pricing">Все тарифы →</Link></Button>
                 </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
-                  {prices.prices.filter((p) => ["all_in_one", "full_report", "security_report"].includes(p.code)).map((p) => (
-                    <div key={p.code} className={cx("flex flex-col rounded-2xl border p-5", p.code === "all_in_one" ? "border-white/25 bg-white/[0.03]" : "border-line bg-panel-2/40")}>
+                {prices.payments_enabled && (
+                  <div className="mt-5 max-w-sm">
+                    <label htmlFor="receipt" className="mb-1.5 block text-[13px] text-muted">Email для кассового чека</label>
+                    <input id="receipt" type="email" autoComplete="email" value={receiptEmail} onChange={(e) => setReceiptEmail(e.target.value)} placeholder="name@example.ru"
+                      className="h-10 w-full rounded-xl border border-line bg-panel-2/40 px-3 text-[14px] outline-none focus:border-line-2" />
+                    <p className="mt-1 text-[11.5px] text-dim">Нужен только чтобы отправить чек. В аккаунте не сохраняется, для входа не используется.</p>
+                  </div>
+                )}
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {prices.prices.filter((p) => p.code === "recheck" || (p.code === "full_audit" && !r.full_access)).map((p) => (
+                    <div key={p.code} className={cx("flex flex-col rounded-2xl border p-5", p.code === "full_audit" ? "border-white/25 bg-white/[0.03]" : "border-line bg-panel-2/40")}>
                       <div className="text-[14px] font-medium">{p.title}</div>
                       <div className="mt-2 text-[26px] font-semibold tabular-nums">{rub(p.amount_rub)}</div>
                       <p className="mt-2 flex-1 text-[12.5px] leading-relaxed text-muted">{p.description}</p>
-                      <Button variant={p.code === "all_in_one" ? "primary" : "secondary"} className="mt-4 w-full" disabled={busy || (!prices.payments_enabled && !r.full_access)}
+                      <Button variant={p.code === "full_audit" ? "primary" : "secondary"} className="mt-4 w-full" disabled={busy || (prices.payments_enabled && !receiptEmail.includes("@")) || (!prices.payments_enabled && !r.full_access)}
                         onClick={() => buy(p.code)}>
                         {prices.payments_enabled ? "Оформить" : "Сейчас бесплатно"}
                       </Button>
                     </div>
                   ))}
                 </div>
-                {!prices.payments_enabled && <p className="mt-4 text-[12px] text-dim">Приём оплаты ещё не подключён — сейчас все отчёты открыты бесплатно. Цены показаны для ознакомления и настраиваются в админке.</p>}
+                {!prices.payments_enabled && <p className="mt-4 text-[12px] text-dim">Приём оплаты ещё не подключён — сейчас полный аудит открыт бесплатно. Цены показаны для ознакомления и настраиваются в админке.</p>}
               </div>
             </div>
           </section>
@@ -296,6 +312,45 @@ function ResultScreen({ r, onUpdate }: { r: AuditResult; onUpdate: (r: AuditResu
           {r.exposure_full.items.length > 0 && <p className="mt-2">Финансовая экспозиция: {rub(r.exposure_full.min)} – {rub(r.exposure_full.max)} — не является прогнозом штрафа.</p>}
         </section>
       </div>
+    </div>
+  );
+}
+
+const STATUS_RU: Record<string, string> = { FAIL: "Проблема", REVIEW: "Требует внимания", PASS: "Пройдено", UNKNOWN: "Не определено", NA: "Не применимо" };
+
+function ComparisonPanel({ c }: { c: Comparison }) {
+  const delta = (a: number | null, b: number | null) => (a === null || b === null ? "—" : `${a} → ${b}${b - a !== 0 ? ` (${b - a > 0 ? "+" : ""}${b - a})` : ""}`);
+  return (
+    <section className="mt-14">
+      <h2 className="mb-4 text-[20px] font-semibold tracking-tight">Сравнение с предыдущей проверкой</h2>
+      <div className="panel rounded-2xl p-6">
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Cmp label="Score" value={delta(c.score_before, c.score_after)} />
+          <Cmp label="Security score" value={delta(c.security_before, c.security_after)} />
+          <Cmp label="Исправлено" value={String(c.resolved)} color="var(--ok)" />
+          <Cmp label="Новых проблем" value={String(c.new_issues)} color={c.new_issues ? "var(--risk)" : undefined} />
+        </div>
+        <div className="mt-3 text-[12.5px] text-dim">Не исправлено: {c.unchanged_issues}. <Link href={`/audit/${c.previous_id}`} className="underline underline-offset-2">Открыть предыдущий отчёт</Link></div>
+        {c.changes.length > 0 && (
+          <ul className="mt-4 space-y-1.5 text-[13px]">
+            {c.changes.map((x) => (
+              <li key={x.rule_id} className="flex flex-wrap items-center gap-2 text-muted">
+                <span className="text-text">{x.title}</span>
+                <span className="text-dim">{STATUS_RU[x.was] ?? x.was} → {STATUS_RU[x.now] ?? x.now}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Cmp({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-panel-2/40 p-4">
+      <div className="text-[11.5px] uppercase tracking-[0.12em] text-dim">{label}</div>
+      <div className="mt-1 text-[20px] font-semibold tabular-nums" style={color ? { color } : undefined}>{value}</div>
     </div>
   );
 }

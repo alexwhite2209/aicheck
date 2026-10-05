@@ -15,12 +15,12 @@
 ## Запуск в Docker
 
 ```bash
-cp .env.example .env   # заполнить POSTGRES_PASSWORD, JWT_SECRET (32+ символа), ADMIN_EMAIL/ADMIN_PASSWORD
+cp .env.example .env   # заполнить POSTGRES_PASSWORD, JWT_SECRET (32+ символа), ADMIN_LOGIN/ADMIN_PASSWORD
 docker compose up -d
 ```
 
 Сервисы: `frontend` (Next.js, порт 3000), `backend` (FastAPI), `worker` (Celery + Playwright/Chromium), `postgres`, `redis`.
-Сайт: http://localhost:3000, админка — `/admin` (вход под ADMIN_EMAIL).
+Сайт: http://localhost:3000, админка — `/admin` (вход под ADMIN_LOGIN).
 
 HTTPS с сертификатом Let's Encrypt: в `.env` задать `DOMAIN=example.ru`, `PUBLIC_BASE_URL=https://example.ru`,
 `TRUST_PROXY_HEADERS=true`, затем `docker compose --profile https up -d` (Caddy на 80/443).
@@ -65,22 +65,26 @@ frontend (Next.js 16) ──/api/*──▶ backend (FastAPI) ──▶ Redis/Ce
 - `backend/app/pdf/report.py` — PDF (ReportLab): URL, дата, тип, Score, экспозиция, проблемы, доказательства, нормы, рекомендации,
   неопределённые пункты, методология, disclaimer.
 
-## Модуль безопасности и реестры (платно)
+## Тарифы
 
-См. **[SECURITY_CHECKS.md](SECURITY_CHECKS.md)**. Методология на базе 12 навыков OWASP. Запускается в deep-режиме
-(`POST /api/audit {security:true}`; при включённом paywall — отдельная покупка `security_report`).
+| Тариф | Цена | Что получает |
+|---|---|---|
+| Экспресс-проверка | 0 ₽ | Базовая проверка соответствия законодательству РФ |
+| Полный аудит | 299 ₽ | Законодательство РФ + Security Skills + реестры + финансовая экспозиция + полный PDF-отчёт |
+| Повторная проверка | 499 ₽ | Полный повторный аудит + сравнение с предыдущим результатом |
 
-- **S1 — пассивные проверки** (любой сайт): заголовки защиты, флаги cookie, поиск секретов в HTML/JS (значения
-  маскируются), доступность `/.git` `/.env` и бэкапов, CORS, утечки SQL-ошибок, параметры open redirect, конфигурация
-  JWT (только декодирование), раскрытие версий ПО, смешанный контент, поверхность API, признаки IDOR. Код —
-  `backend/app/secaudit/` (`collect.py` — безопасные GET во время обхода; `scan.py` — детект; `engine.py` — триаж +
-  Security score + связь с 152-ФЗ ст. 19). Активных атак нет.
-- **S2 — активные пробы** (XSS/SQLi/IDOR/Host-header): только после подтверждения владения доменом, безвредные и
-  неразрушающие. В MVP выключены (`SECURITY_ACTIVE_ENABLED=false`) — каркас в SECURITY_CHECKS.md.
+Цены хранятся в БД и меняются в админке. Отдельного тарифа на проверку безопасности нет — она входит в «Полный аудит».
+Вход и регистрация — только **логин + пароль**; email не требуется (для кассового чека ЮKassa email вводится при оплате и не сохраняется).
+
+## Security Skills и реестры (входят в «Полный аудит»)
+
+См. **[SECURITY_CHECKS.md](SECURITY_CHECKS.md)**. 10 пассивных направлений + внутренний триаж. Сервис открывает сайт,
+смотрит только то, что он сам публично отдаёт, фиксирует факт, сопоставляет и даёт рекомендацию. Активных проверок
+(XSS, SQL-инъекции, Host header, активные IDOR/BOLA, любая эксплуатация) нет. Код — `backend/app/secaudit/`
+(`collect.py` — безопасные GET во время обхода; `scan.py` — детект; `engine.py` — триаж + Security score + связь с 152-ФЗ ст. 19).
+
 - **Реестры** (`secaudit/registries.py`): домен через RDAP (.ru/.рф, публично), ЕГРЮЛ/ЕГРИП по ИНН (через `DADATA_API_KEY`,
   иначе ссылка на egrul.nalog.ru), реестр операторов ПД РКН (капчу не обходим — прямая ссылка).
-
-Капчу сервис не обходит; разрушающие действия и доступ к чужим данным запрещены всегда.
 
 ## Обновление законодательства
 

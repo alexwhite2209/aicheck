@@ -22,8 +22,6 @@ class Settings(BaseSettings):
 
     # Реестры: ключ DaData для ЕГРЮЛ/ЕГРИП (если пусто — ссылка на ручную проверку)
     dadata_api_key: str = ""
-    # Активные пробы безопасности (S2) — только для подтверждённых доменов. В MVP выключено.
-    security_active_enabled: bool = False
 
     yookassa_shop_id: str = ""
     yookassa_secret_key: str = ""
@@ -37,7 +35,8 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:3000"
     cors_origins: str = "http://localhost:3000"
 
-    admin_email: str = ""
+    admin_login: str = ""
+    admin_email: str = ""  # устаревшее имя переменной, читается как логин администратора
     admin_password: str = ""
 
     max_pages: int = 20

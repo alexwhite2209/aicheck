@@ -36,8 +36,6 @@ async def collect_security(ctx, base: str, deadline: float) -> dict:
             if pid == "securitytxt":
                 out["security_txt"] = True
                 continue
-            if pid == "verify":
-                continue
             out["exposure"].append({"id": pid, "path": path, "title": title, "severity": severity, "status": status})
 
     # --- CORS: запрос с Origin, читаем отражение ACAO/ACAC
