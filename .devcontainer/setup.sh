@@ -12,7 +12,8 @@ python -m venv .venv
 echo "==> Chromium для Playwright (нужен для проверки сайтов)"
 .venv/bin/python -m playwright install chromium || echo "ПРЕДУПРЕЖДЕНИЕ: не удалось скачать Chromium"
 # системные библиотеки Chromium требуют root
-sudo -n .venv/bin/python -m playwright install-deps chromium || echo "ПРЕДУПРЕЖДЕНИЕ: не удалось поставить системные библиотеки Chromium"
+sudo apt-get update -qq || true
+sudo "$PWD/.venv/bin/python" -m playwright install-deps chromium || echo "ПРЕДУПРЕЖДЕНИЕ: не удалось поставить системные библиотеки Chromium"
 
 echo "==> frontend: npm install"
 cd "$root/frontend"
