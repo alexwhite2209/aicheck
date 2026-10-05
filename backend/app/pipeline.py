@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from .ai.openrouter import explain
 from .crawler.browser import crawl
 from .crawler.extract import build_facts
+from .config import get_settings
 from .db import session_scope
 from .legal import engine
 from .models import Audit, Setting, Site
@@ -161,6 +162,8 @@ def run_audit(audit_id: str) -> None:
             if a:
                 a.status, a.finished_at = "failed", datetime.now(timezone.utc)
                 a.error = "Внутренняя ошибка при проверке сайта. Попробуйте повторить позже."
+                if not get_settings().is_prod:  # локально показываем настоящую причину
+                    a.error += f" [{type(e).__name__}: {str(e).strip().splitlines()[0][:300] if str(e).strip() else ''}]"
                 stages = [dict(s) for s in (a.stages or [])]
                 for s in stages:
                     if s["status"] == "running":
