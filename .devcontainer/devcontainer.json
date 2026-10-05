@@ -1,0 +1,19 @@
+{
+  "name": "Норма (локальный запуск)",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
+  },
+  "hostRequirements": { "cpus": 4 },
+  "containerEnv": {
+    "TASK_MODE": "inline",
+    "ENV": "development",
+    "PUBLIC_BASE_URL": "http://localhost:3000"
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "bash .devcontainer/start.sh",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Сайт", "onAutoForward": "openBrowser" }
+  }
+}
