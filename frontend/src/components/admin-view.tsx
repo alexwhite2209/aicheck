@@ -123,7 +123,7 @@ function AuditsTab() {
   );
 }
 
-type AdminUser = { id: string; email: string; role: string; created_at: string; audits: number; unlimited: boolean; pro: boolean; is_active: boolean };
+type AdminUser = { id: string; login: string; role: string; created_at: string; audits: number; unlimited: boolean; pro: boolean; is_active: boolean };
 
 function UsersTab() {
   const { data, reload } = useLoad<{ users: AdminUser[] }>("/api/admin/users");
@@ -133,7 +133,8 @@ function UsersTab() {
     try {
       await api(`/api/admin/users/${id}`, { method: "PUT", body });
       reload();
-    } catch (e) { setMsg(e instanceof Error ? e.message : "Ошибка"); }
+      return true;
+    } catch (e) { setMsg(e instanceof Error ? e.message : "Ошибка"); return false; }
   }
   return (
     <div className="space-y-3">
@@ -141,10 +142,10 @@ function UsersTab() {
       {msg && <div className="text-[13px] text-risk">{msg}</div>}
       <div className="panel overflow-x-auto rounded-2xl">
         <table className="w-full min-w-[760px] text-left text-[13px]">
-          <thead className="text-dim"><tr>{["Email", "Роль", "Доступ", "Проверок", "Регистрация", "Управление"].map((h) => <th key={h} className="p-3 font-medium">{h}</th>)}</tr></thead>
+          <thead className="text-dim"><tr>{["Логин", "Роль", "Доступ", "Проверок", "Регистрация", "Управление"].map((h) => <th key={h} className="p-3 font-medium">{h}</th>)}</tr></thead>
           <tbody>{data?.users.map((u) => (
             <tr key={u.id} className="border-t border-line text-muted">
-              <td className="p-3 text-text">{u.email}{!u.is_active && <span className="ml-2 text-risk">(заблокирован)</span>}</td>
+              <td className="p-3 text-text">{u.login}{!u.is_active && <span className="ml-2 text-risk">(заблокирован)</span>}</td>
               <td className="p-3">{u.role === "admin" ? <Badge color="var(--ok)">админ</Badge> : "пользователь"}</td>
               <td className="p-3">{u.pro ? <Badge color="var(--ok)">безлимит</Badge> : "обычный"}</td>
               <td className="p-3 tabular-nums">{u.audits}</td>
@@ -158,6 +159,12 @@ function UsersTab() {
                   )}
                   <Button size="sm" variant="secondary" onClick={() => patch(u.id, { role: u.role === "admin" ? "user" : "admin" })}>
                     {u.role === "admin" ? "Снять админа" : "Сделать админом"}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => {
+                    const password = window.prompt(`Новый пароль для «${u.login}» (не менее 8 символов)`);
+                    if (password) patch(u.id, { password }).then((ok) => ok && setMsg(`Пароль для «${u.login}» изменён`));
+                  }}>
+                    Новый пароль
                   </Button>
                 </div>
               </td>

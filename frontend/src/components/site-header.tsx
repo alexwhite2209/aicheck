@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { Logo } from "./brand";
 import { Button, cx } from "./ui";
 
-type Me = { user: { email: string; role: string } };
+type Me = { user: { login: string; role: string } };
 
 const NAV = [
   { href: "/#how", label: "Как это работает" },

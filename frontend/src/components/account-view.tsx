@@ -12,7 +12,7 @@ import { Badge, Button, Dialog, DialogContent, DialogTrigger, Input, Label, cx }
 type Row = { id: string; url: string; host: string; status: string; score: number | null; exposure_min: number | null; exposure_max: number | null; created_at: string; paid_full: boolean; counts: { fail: number; review: number } | null };
 type SiteT = { id: string; url: string; host: string; monitoring: string; verified?: boolean; audits: Row[] };
 type Pay = { id: string; product: string; amount_rub: number; status: string; audit_id: string | null; created_at: string };
-type Me = { email: string; role: string; created_at: string; marketing_consent: boolean };
+type Me = { login: string; role: string; created_at: string };
 
 const TABS = [["sites", "Мои сайты"], ["audits", "Проверки"], ["history", "История"], ["pdf", "PDF"], ["monitoring", "Мониторинг"], ["payments", "Платежи"], ["profile", "Профиль"]] as const;
 
@@ -94,7 +94,7 @@ export function AccountView() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Label>Личный кабинет</Label>
-          <h1 className="mt-2 text-[28px] font-semibold tracking-tight">{me.email}</h1>
+          <h1 className="mt-2 break-all text-[28px] font-semibold tracking-tight">{me.login}</h1>
         </div>
         <Button variant="ghost" onClick={logout}><LogOut className="size-4" /> Выйти</Button>
       </div>
@@ -200,9 +200,9 @@ export function AccountView() {
 
         <Tabs.Content value="profile" className="mt-6 max-w-xl space-y-4">
           <div className="panel rounded-2xl p-5 text-[13.5px] text-muted">
-            <div>Email: <span className="text-text">{me.email}</span></div>
+            <div>Логин: <span className="text-text">{me.login}</span></div>
             <div className="mt-1">Аккаунт создан: {d(me.created_at)}</div>
-            <div className="mt-1">Согласие на информационные сообщения: {me.marketing_consent ? "дано" : "не дано"}</div>
+            <div className="mt-1">Забыли пароль? Восстановления по почте нет — напишите администратору сервиса, он задаст новый пароль.</div>
           </div>
           <div className="panel rounded-2xl p-5">
             <div className="text-[14px] font-medium">Мои данные</div>

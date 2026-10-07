@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:3000"
     cors_origins: str = "http://localhost:3000"
 
-    admin_email: str = ""
+    # логин первого администратора; ADMIN_EMAIL — старое имя переменной, поддерживается для совместимости
+    admin_login: str = Field(default="", validation_alias=AliasChoices("ADMIN_LOGIN", "ADMIN_EMAIL"))
     admin_password: str = ""
 
     max_pages: int = 20

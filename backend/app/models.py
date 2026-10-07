@@ -19,14 +19,13 @@ def new_id() -> str:
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    login: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="user")  # user | admin
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # согласие на обработку ПД пользователя сервиса (отдельный документ, версия текста)
     consent_version: Mapped[str] = mapped_column(String(32), default="")
     consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    marketing_consent: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # безлимитный доступ: полный отчёт + безопасность бесплатно, без лимитов частоты (выдаёт администратор)
     unlimited: Mapped[bool] = mapped_column(Boolean, default=False)

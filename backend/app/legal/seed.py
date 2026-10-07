@@ -89,14 +89,19 @@ def seed_settings(db: Session) -> None:
     if not db.scalars(select(Price)).first():
         for code, title, desc, amount, sort in DEFAULT_PRICES:
             db.add(Price(code=code, title=title, description=desc, amount_rub=amount, sort=sort))
-    if st.admin_email and st.admin_password:
-        from ..security import hash_password
-        u = db.scalars(select(User).where(User.email == st.admin_email.lower())).first()
+    if st.admin_login and st.admin_password:
+        from ..security import hash_password, verify_password
+        login = st.admin_login.strip().lower()
+        u = db.scalars(select(User).where(User.login == login)).first()
         if not u:
-            db.add(User(email=st.admin_email.lower(), password_hash=hash_password(st.admin_password), role="admin",
+            db.add(User(login=login, password_hash=hash_password(st.admin_password), role="admin",
                         consent_version="admin-bootstrap"))
-        elif u.role != "admin":
-            u.role = "admin"
+        else:
+            if u.role != "admin":
+                u.role = "admin"
+            # пароль администратора задаётся в ADMIN_PASSWORD — так его можно восстановить без почты
+            if not verify_password(st.admin_password, u.password_hash):
+                u.password_hash = hash_password(st.admin_password)
 
 
 def seed_all(db: Session) -> None:

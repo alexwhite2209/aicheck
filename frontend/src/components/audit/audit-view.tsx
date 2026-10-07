@@ -138,10 +138,13 @@ function ResultScreen({ r, onUpdate }: { r: AuditResult; onUpdate: (r: AuditResu
   }
 
   async function buy(product = "full_report") {
+    // email нужен ЮKassa только для кассового чека (54-ФЗ); сервис его не сохраняет
+    const receipt_email = window.prompt("Email для кассового чека (сервис его не сохраняет)")?.trim();
+    if (!receipt_email) return;
     setBusy(true);
     setMsg("");
     try {
-      const p = await api<{ confirmation_url: string }>("/api/payments/create", { method: "POST", body: { product, audit_id: r.id } });
+      const p = await api<{ confirmation_url: string }>("/api/payments/create", { method: "POST", body: { product, audit_id: r.id, receipt_email } });
       window.location.href = p.confirmation_url;
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) router.push(`/register?claim=${r.id}&buy=1`);

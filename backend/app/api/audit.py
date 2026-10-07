@@ -88,7 +88,7 @@ async def create_audit(body: AuditIn, db: Session = Depends(get_db), user: User 
     a = Audit(url=url, host=host, user_id=user.id if user else None, site_id=site_id, status="queued",
               stages=initial_stages(deep), deep=deep, ip_hash=iph)
     db.add(a)
-    log_action(db, "audit.create", user.email if user else "anonymous", url, iph)
+    log_action(db, "audit.create", user.login if user else "anonymous", url, iph)
     db.commit()
     enqueue_audit(a.id)
     return {"id": a.id, "status": a.status, "url": a.url}

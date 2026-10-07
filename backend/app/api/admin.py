@@ -13,6 +13,7 @@ from ..db import get_db
 from ..legal.fixtures import run_cases
 from ..legal.rules import REGISTRY
 from ..models import Audit, AuditLog, NormativeAct, NormativeArticle, Payment, Price, Rule, RuleVersion, Setting, User
+from ..security import hash_password
 from .deps import current_admin
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -42,21 +43,21 @@ def dashboard(db: Session = Depends(get_db), admin: User = Depends(current_admin
 
 @router.get("/audits")
 def audits(status: str | None = None, q: str | None = None, limit: int = 100, db: Session = Depends(get_db), admin: User = Depends(current_admin)):
-    stmt = select(Audit, User.email).outerjoin(User, User.id == Audit.user_id).order_by(Audit.created_at.desc()).limit(min(limit, 500))
+    stmt = select(Audit, User.login).outerjoin(User, User.id == Audit.user_id).order_by(Audit.created_at.desc()).limit(min(limit, 500))
     if status:
         stmt = stmt.where(Audit.status == status)
     if q:
         stmt = stmt.where(Audit.url.ilike(f"%{q[:100]}%"))
-    return {"audits": [{"id": a.id, "url": a.url, "user": email, "created_at": a.created_at.isoformat(), "score": a.score,
+    return {"audits": [{"id": a.id, "url": a.url, "user": login, "created_at": a.created_at.isoformat(), "score": a.score,
                         "exposure_min": (a.exposure or {}).get("min"), "exposure_max": (a.exposure or {}).get("max"),
-                        "status": a.status, "error": a.error, "site_type": a.site_type} for a, email in db.execute(stmt).all()]}
+                        "status": a.status, "error": a.error, "site_type": a.site_type} for a, login in db.execute(stmt).all()]}
 
 
 @router.get("/users")
 def users(db: Session = Depends(get_db), admin: User = Depends(current_admin)):
     rows = db.execute(select(User, func.count(Audit.id)).outerjoin(Audit, Audit.user_id == User.id).group_by(User.id).order_by(User.created_at.desc()).limit(500)).all()
-    return {"users": [{"id": u.id, "email": u.email, "role": u.role, "created_at": u.created_at.isoformat(), "audits": n,
-                       "consent_version": u.consent_version, "marketing": u.marketing_consent,
+    return {"users": [{"id": u.id, "login": u.login, "role": u.role, "created_at": u.created_at.isoformat(), "audits": n,
+                       "consent_version": u.consent_version,
                        "unlimited": u.unlimited, "pro": bool(u.role == "admin" or u.unlimited), "is_active": u.is_active}
                       for u, n in rows]}
 
@@ -65,20 +66,25 @@ class UserPatch(BaseModel):
     unlimited: bool | None = None
     role: str | None = Field(default=None, pattern="^(user|admin)$")
     is_active: bool | None = None
+    # новый пароль пользователя (восстановления по почте нет — пароль сбрасывает администратор)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 @router.put("/users/{user_id}")
 def update_user(user_id: str, body: UserPatch, db: Session = Depends(get_db), admin: User = Depends(current_admin)):
-    """Выдать/снять безлимитный доступ, роль администратора, блокировку. Доступно только администратору."""
+    """Выдать/снять безлимитный доступ, роль администратора, блокировку, задать новый пароль. Доступно только администратору."""
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(404, "Пользователь не найден")
     if u.id == admin.id and (body.role == "user" or body.is_active is False):
         raise HTTPException(400, "Нельзя снять с себя права администратора или заблокировать себя")
-    changes = body.model_dump(exclude_none=True)
+    changes = body.model_dump(exclude_none=True, exclude={"password"})
     for k, v in changes.items():
         setattr(u, k, v)
-    log_action(db, "user.grant", admin.email, u.email, **changes)
+    if body.password:
+        u.password_hash = hash_password(body.password)
+        changes["password_reset"] = True
+    log_action(db, "user.grant", admin.login, u.login, **changes)
     db.commit()
     return {"ok": True, "unlimited": u.unlimited, "role": u.role, "is_active": u.is_active}
 
@@ -114,7 +120,7 @@ def create_rule(body: RuleIn, db: Session = Depends(get_db), admin: User = Depen
     if db.get(Rule, body.id):
         raise HTTPException(409, "Правило уже существует")
     db.add(Rule(id=body.id, title=body.title, category=body.category, enabled=False))
-    log_action(db, "rule.create", admin.email, body.id)
+    log_action(db, "rule.create", admin.login, body.id)
     db.commit()
     return {"ok": True}
 
@@ -133,7 +139,7 @@ def update_rule(rule_id: str, body: RulePatch, db: Session = Depends(get_db), ad
     changes = body.model_dump(exclude_none=True)
     for k, v in changes.items():
         setattr(r, k, v)
-    log_action(db, "rule.update", admin.email, rule_id, **changes)
+    log_action(db, "rule.update", admin.login, rule_id, **changes)
     db.commit()
     return {"ok": True}
 
@@ -165,9 +171,9 @@ def create_version(rule_id: str, body: VersionIn, db: Session = Depends(get_db),
     prev = max(r.versions, key=lambda v: v.version) if r.versions else None
     v = RuleVersion(rule_id=rule_id, version=last + 1, status="draft", severity=body.severity, mode=prev.mode if prev else "base",
                     basis=body.basis, basis_articles=arts, finance=body.finance, why=body.why, fix=body.fix,
-                    effective_from=body.effective_from, notes=body.notes, created_by=admin.email)
+                    effective_from=body.effective_from, notes=body.notes, created_by=admin.login)
     db.add(v)
-    log_action(db, "rule.version.create", admin.email, f"{rule_id} v{v.version}")
+    log_action(db, "rule.version.create", admin.login, f"{rule_id} v{v.version}")
     db.commit()
     return version_out(v)
 
@@ -182,7 +188,7 @@ def test_version(rule_id: str, version_id: str, db: Session = Depends(get_db), a
     v.test_report = report
     if v.status == "draft" and report["passed"]:
         v.status = "tested"
-    log_action(db, "rule.version.test", admin.email, f"{rule_id} v{v.version}", passed=report["passed"])
+    log_action(db, "rule.version.test", admin.login, f"{rule_id} v{v.version}", passed=report["passed"])
     db.commit()
     return report
 
@@ -200,8 +206,8 @@ def publish_version(rule_id: str, version_id: str, db: Session = Depends(get_db)
             old.effective_to = v.effective_from
         if v.effective_from <= today:
             old.status = "retired"
-    v.status, v.published_by, v.published_at = "published", admin.email, datetime.now(timezone.utc)
-    log_action(db, "rule.version.publish", admin.email, f"{rule_id} v{v.version}", effective_from=v.effective_from.isoformat())
+    v.status, v.published_by, v.published_at = "published", admin.login, datetime.now(timezone.utc)
+    log_action(db, "rule.version.publish", admin.login, f"{rule_id} v{v.version}", effective_from=v.effective_from.isoformat())
     db.commit()
     return version_out(v)
 
@@ -248,7 +254,7 @@ def upsert_act(body: ActIn, db: Session = Depends(get_db), admin: User = Depends
     a = db.get(NormativeAct, body.id) or NormativeAct(id=body.id)
     a.title, a.short, a.edition, a.official_url, a.checked_at = body.title, body.short, body.edition, body.official_url, body.checked_at
     db.add(a)
-    log_action(db, "norm.act.upsert", admin.email, body.id)
+    log_action(db, "norm.act.upsert", admin.login, body.id)
     db.commit()
     return {"ok": True}
 
@@ -266,7 +272,7 @@ def add_article(body: ArticleIn, db: Session = Depends(get_db), admin: User = De
     db.add(NormativeArticle(id=aid, norm_key=body.key, act_id=body.act_id, article=body.article, part=body.part, paragraph=body.paragraph,
                             title=body.title, text=body.text, edition=body.edition, effective_from=body.effective_from,
                             checked_at=body.checked_at, official_url=body.official_url))
-    log_action(db, "norm.article.add", admin.email, aid)
+    log_action(db, "norm.article.add", admin.login, aid)
     db.commit()
     return {"ok": True, "id": aid, "note": "Чтобы правило использовало новую редакцию, создайте новую версию правила, протестируйте и опубликуйте её."}
 
@@ -296,7 +302,7 @@ def put_ai(body: AISettings, db: Session = Depends(get_db), admin: User = Depend
     s = db.get(Setting, "ai") or Setting(key="ai", value={})
     s.value = {"provider": "openrouter", **body.model_dump()}
     db.add(s)
-    log_action(db, "ai.settings", admin.email, body.model)
+    log_action(db, "ai.settings", admin.login, body.model)
     db.commit()
     return s.value
 
@@ -322,7 +328,7 @@ def put_price(body: PriceIn, db: Session = Depends(get_db), admin: User = Depend
     for k, v in body.model_dump().items():
         setattr(p, k, v)
     db.add(p)
-    log_action(db, "price.update", admin.email, body.code, amount=body.amount_rub)
+    log_action(db, "price.update", admin.login, body.code, amount=body.amount_rub)
     db.commit()
     return {"ok": True}
 

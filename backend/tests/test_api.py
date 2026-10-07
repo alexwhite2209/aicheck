@@ -73,17 +73,23 @@ def test_good_site_scores_high(client):
 
 
 def test_auth_csrf_and_admin(client):
-    r = client.post("/api/auth/register", json={"email": "u@test.ru", "password": "password123", "consent": False})
+    r = client.post("/api/auth/register", json={"login": "user1", "password": "password123", "consent": False})
     assert r.status_code == 422
-    r = client.post("/api/auth/register", json={"email": "u@test.ru", "password": "password123", "consent": True})
+    for bad_login in ("ab", "u@test.ru", "two words", "x" * 33):
+        r = client.post("/api/auth/register", json={"login": bad_login, "password": "password123", "consent": True})
+        assert r.status_code == 422, bad_login
+    r = client.post("/api/auth/register", json={"login": " User1 ", "password": "password123", "consent": True})
     assert r.status_code == 200
     csrf = client.cookies.get("csrf_token")
-    assert client.get("/api/auth/me").json()["user"]["email"] == "u@test.ru"
+    me = client.get("/api/auth/me").json()["user"]
+    assert me["login"] == "user1" and "email" not in me
     assert client.post("/api/user/sites", json={"url": "example.ru"}).status_code == 403  # без CSRF-заголовка
     assert client.post("/api/user/sites", json={"url": "example.ru"}, headers={"X-CSRF-Token": csrf}).status_code == 200
     assert client.get("/api/admin/dashboard").status_code == 403
     client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf})
-    r = client.post("/api/auth/login", json={"email": "admin@test.ru", "password": "admin-pass-123"})
+    r = client.post("/api/auth/login", json={"login": "admin", "password": "wrong-pass"})
+    assert r.status_code == 401
+    r = client.post("/api/auth/login", json={"login": "Admin", "password": "admin-pass-123"})
     assert r.status_code == 200
     csrf = client.cookies.get("csrf_token")
     d = client.get("/api/admin/dashboard").json()
@@ -124,17 +130,23 @@ def test_admin_grants_unlimited(client):
     # войти админом
     csrf = client.cookies.get("csrf_token")
     client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf})
-    r = client.post("/api/auth/login", json={"email": "admin@test.ru", "password": "admin-pass-123"})
+    r = client.post("/api/auth/login", json={"login": "admin", "password": "admin-pass-123"})
     assert r.status_code == 200
     csrf = client.cookies.get("csrf_token")
     users = client.get("/api/admin/users").json()["users"]
-    target = next(u for u in users if u["email"] == "u@test.ru")
+    target = next(u for u in users if u["login"] == "user1")
     assert target["pro"] is False
     g = client.put(f"/api/admin/users/{target['id']}", headers={"X-CSRF-Token": csrf}, json={"unlimited": True})
     assert g.status_code == 200 and g.json()["unlimited"] is True
     users2 = client.get("/api/admin/users").json()["users"]
-    assert next(u for u in users2 if u["email"] == "u@test.ru")["pro"] is True
+    assert next(u for u in users2 if u["login"] == "user1")["pro"] is True
     # админ не может снять с себя роль
-    me = next(u for u in users2 if u["email"] == "admin@test.ru")
+    me = next(u for u in users2 if u["login"] == "admin")
     bad = client.put(f"/api/admin/users/{me['id']}", headers={"X-CSRF-Token": csrf}, json={"role": "user"})
     assert bad.status_code == 400
+    # сброс пароля пользователю (восстановления по почте нет)
+    assert client.put(f"/api/admin/users/{target['id']}", headers={"X-CSRF-Token": csrf}, json={"password": "short"}).status_code == 422
+    assert client.put(f"/api/admin/users/{target['id']}", headers={"X-CSRF-Token": csrf}, json={"password": "new-password-1"}).status_code == 200
+    client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf})
+    assert client.post("/api/auth/login", json={"login": "user1", "password": "password123"}).status_code == 401
+    assert client.post("/api/auth/login", json={"login": "user1", "password": "new-password-1"}).status_code == 200
