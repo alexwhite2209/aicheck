@@ -1,3 +1,8 @@
+# www.домен → основной домен (нужна A-запись www, иначе Caddy просто не выпустит для неё сертификат)
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
 {$DOMAIN} {
 	encode zstd gzip
 	header {
