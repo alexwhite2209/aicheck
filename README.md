@@ -15,15 +15,18 @@
 ## Запуск в Docker
 
 ```bash
-cp .env.example .env   # заполнить POSTGRES_PASSWORD, JWT_SECRET (32+ символа), ADMIN_EMAIL/ADMIN_PASSWORD
+cp .env.example .env   # заполнить POSTGRES_PASSWORD, JWT_SECRET (32+ символа), ADMIN_LOGIN/ADMIN_PASSWORD
 docker compose up -d
 ```
 
 Сервисы: `frontend` (Next.js, порт 3000), `backend` (FastAPI), `worker` (Celery + Playwright/Chromium), `postgres`, `redis`.
-Сайт: http://localhost:3000, админка — `/admin` (вход под ADMIN_EMAIL).
+Сайт: https://localhost (Caddy, самоподписанный сертификат), админка — `/admin` (вход под ADMIN_LOGIN / ADMIN_PASSWORD).
 
 HTTPS с сертификатом Let's Encrypt: в `.env` задать `DOMAIN=example.ru`, `PUBLIC_BASE_URL=https://example.ru`,
-`TRUST_PROXY_HEADERS=true`, затем `docker compose --profile https up -d` (Caddy на 80/443).
+`TRUST_PROXY_HEADERS=true`, затем `docker compose up -d` (Caddy на 80/443 сам получит сертификат).
+
+**Запуск на сервере — [DEPLOY_REGRU.md](DEPLOY_REGRU.md)**: с телефона через GitHub Actions (Actions → Deploy → Run workflow)
+или вручную по SSH. При каждом push GitHub Actions прогоняет тесты backend и сборку frontend (workflow «Проверки»).
 
 ## Локальная разработка (без Docker)
 
@@ -33,7 +36,7 @@ cd backend && python -m venv .venv && .venv/Scripts/pip install -r requirements.
 cd ../frontend && npm install && npm run dev                       # http://localhost:3000, /api проксируется на :8000
 ```
 
-Тесты backend: `.venv/Scripts/python -m pytest` (136 тестов: каждое правило, SSRF, финансы и Score, извлечение фактов, API).
+Тесты backend: `.venv/Scripts/python -m pytest` (141 тест: каждое правило, SSRF, финансы и Score, извлечение фактов, API).
 
 ## Переменные окружения
 
@@ -98,8 +101,8 @@ SSRF-защита (валидация URL + egress-прокси + блокиро
 
 ## Персональные данные самого сервиса
 
-IP хранится только в виде HMAC-хеша; анонимные проверки удаляются через 30 дней; при регистрации — отдельное согласие на ПД и
-отдельное (необязательное) на рассылки; выгрузка и удаление аккаунта в кабинете; без сторонней аналитики, шрифты самохостятся;
+IP хранится только в виде HMAC-хеша; анонимные проверки удаляются через 30 дней; регистрация — только логин и пароль (email не собирается)
+с отдельным согласием на ПД; пароль пользователю сбрасывает администратор; выгрузка и удаление аккаунта в кабинете; без сторонней аналитики, шрифты самохостятся;
 базы данных должны размещаться на серверах в РФ (ч. 5 ст. 18 152-ФЗ). Перед запуском заполните реквизиты оператора (`OPERATOR_*`)
 и направьте уведомление в Роскомнадзор.
 

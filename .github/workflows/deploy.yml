@@ -1,0 +1,94 @@
+# Установка и обновление сайта на вашем сервере (VPS) — запускается кнопкой, в том числе с телефона:
+# GitHub → вкладка Actions → Deploy → Run workflow. Что нужно заранее — см. DEPLOY_REGRU.md.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Домен сайта, например norma-audit.ru (A-запись домена должна указывать на IP сервера)"
+        required: true
+        type: string
+      admin_login:
+        description: "Логин администратора сайта"
+        required: true
+        default: admin
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # подключение к серверу
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER || 'root' }}
+      SERVER_PORT: ${{ secrets.SERVER_PORT || '22' }}
+      SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      # передаётся на сервер в /opt/norma/.env
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+      GIT_SHA: ${{ github.sha }}
+      DOMAIN: ${{ inputs.domain }}
+      ADMIN_LOGIN: ${{ inputs.admin_login }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      YOOKASSA_SHOP_ID: ${{ secrets.YOOKASSA_SHOP_ID }}
+      YOOKASSA_SECRET_KEY: ${{ secrets.YOOKASSA_SECRET_KEY }}
+      DADATA_API_KEY: ${{ secrets.DADATA_API_KEY }}
+      OPERATOR_NAME: ${{ vars.OPERATOR_NAME }}
+      OPERATOR_INN: ${{ vars.OPERATOR_INN }}
+      OPERATOR_OGRN: ${{ vars.OPERATOR_OGRN }}
+      OPERATOR_ADDRESS: ${{ vars.OPERATOR_ADDRESS }}
+      OPERATOR_EMAIL: ${{ vars.OPERATOR_EMAIL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Проверить секреты
+        run: |
+          missing=0
+          [ -n "$SERVER_HOST" ] || { echo "::error::Добавьте секрет SERVER_HOST — IP-адрес сервера"; missing=1; }
+          [ -n "$SERVER_PASSWORD$SERVER_SSH_KEY" ] || { echo "::error::Добавьте секрет SERVER_PASSWORD — пароль root от сервера"; missing=1; }
+          [ -n "$ADMIN_PASSWORD" ] || { echo "::error::Добавьте секрет ADMIN_PASSWORD — пароль для входа в админку (от 8 символов)"; missing=1; }
+          exit $missing
+
+      - name: Подготовить SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if [ -n "$SERVER_SSH_KEY" ]; then
+            printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          else
+            sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          fi
+
+      - name: Установить или обновить сайт на сервере
+        run: |
+          opts=(-p "$SERVER_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=20)
+          if [ -n "$SERVER_SSH_KEY" ]; then
+            run_ssh() { ssh -i ~/.ssh/id_deploy "${opts[@]}" "$SERVER_USER@$SERVER_HOST" "$@"; }
+          else
+            export SSHPASS="$SERVER_PASSWORD"
+            run_ssh() { sshpass -e ssh -o PubkeyAuthentication=no "${opts[@]}" "$SERVER_USER@$SERVER_HOST" "$@"; }
+          fi
+          # скрипт с настройками кладём во временный файл (права 600) и удаляем после запуска
+          {
+            for k in REPO_URL GIT_SHA DOMAIN ADMIN_LOGIN ADMIN_PASSWORD OPENROUTER_API_KEY YOOKASSA_SHOP_ID YOOKASSA_SECRET_KEY \
+                     DADATA_API_KEY OPERATOR_NAME OPERATOR_INN OPERATOR_OGRN OPERATOR_ADDRESS OPERATOR_EMAIL; do
+              printf 'export %s=%q\n' "$k" "${!k}"
+            done
+            cat deploy/remote-deploy.sh
+          } | run_ssh 'umask 077; cat > ~/.norma-deploy.sh'
+          run_ssh 'bash ~/.norma-deploy.sh </dev/null; rc=$?; rm -f ~/.norma-deploy.sh; exit $rc'
+
+      - name: Готово
+        run: |
+          d="$(printf '%s' "$DOMAIN" | tr 'A-Z' 'a-z' | sed -E 's#^https?://##; s#/.*$##; s#^www\.##')"
+          echo "### Сайт работает: https://$d" >> "$GITHUB_STEP_SUMMARY"
+          echo "Админка: https://$d/login — логин \`$ADMIN_LOGIN\`, пароль из секрета ADMIN_PASSWORD" >> "$GITHUB_STEP_SUMMARY"
